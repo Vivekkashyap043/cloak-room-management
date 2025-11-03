@@ -1,0 +1,5 @@
+{"timestamp":"2025-11-02T18:09:07.485Z","admin":"admin","action":"delete_permanent_soft_deleted","deletedRows":1,"ip":"::1"}
+{"timestamp":"2025-11-02T18:09:58.488Z","admin":"admin","action":"delete_returned_by_range","from":"2025-11-01 00:00:00","to":"2025-11-02 23:59:59","deletedRows":1,"ip":"::1"}
+{"timestamp":"2025-11-02T18:11:03.697Z","admin":"admin","action":"delete_permanent_soft_deleted","deletedRows":1,"ip":"::1"}
+{"timestamp":"2025-11-02T19:12:31.190Z","admin":"admin","action":"delete_returned_by_range","from":"2025-11-02 00:00:00","to":"2025-11-03 23:59:59","deletedRows":1,"perRecord":[{"id":7,"person_photo_path":"/uploads/1762110698790-0bowpj.jpg","things_photo_path":"/uploads/1762110698791-kh730l.jpg"}],"ip":"::1"}
+{"timestamp":"2025-11-03T04:55:00.018Z","admin":"admin","action":"delete_permanent_soft_deleted","deletedRows":1,"perRecord":[{"id":2,"person_photo_path":"/uploads/1762145056184-dt702u.jpg","things_photo_path":"/uploads/1762145056195-ogyq0k.jpg"}],"ip":"10.193.125.154"}
