@@ -1,0 +1,44 @@
+/* Dashboard specific styles */
+.top-header{ width:100%; padding:28px 40px; display:flex; justify-content:space-between; align-items:center; box-sizing:border-box; margin-bottom:6px }
+.top-brand .brand-title{ margin:0; font-size:22px; font-weight:800; color:#0b1220 }
+.top-brand .brand-sub{ color:var(--muted); font-size:0.98rem }
+
+.tabs-row{ display:flex; gap:14px; justify-content:center; padding:12px 0; margin-bottom:18px }
+.tab{
+  background: #fff; /* make both tabs visible against the header */
+  border: 1px solid rgba(15,23,36,0.06);
+  padding:10px 20px;
+  border-radius: 999px;
+  font-weight:700;
+  cursor:pointer;
+  color: #1f2937;
+  transition: all .18s ease;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.04);
+}
+.tab:hover{ transform: translateY(-2px); box-shadow: 0 10px 28px rgba(2,6,23,0.06); }
+.tab:focus{ outline: none; box-shadow: 0 8px 28px rgba(37,99,235,0.08); }
+.tab.active{
+  background: var(--danger); /* use brand red for active tab */
+  color: #fff;
+  border-color: rgba(0,0,0,0.08);
+  box-shadow: 0 12px 36px rgba(163,34,8,0.12);
+  transform: translateY(-2px);
+}
+
+.dashboard-grid{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  gap: 18px;
+  padding-top: 18px;
+}
+
+.entry-card { padding: 28px; border-radius: 18px; box-shadow: 0 30px 80px rgba(2,6,23,0.08); background: linear-gradient(180deg,#fff,#fbfdff); width: 100%; max-width: 1100px; min-height: 620px }
+.card-header{ display:flex; align-items:center; justify-content:space-between }
+.card-title{ margin:0; font-size:1.5rem; font-weight:800 }
+.card-body{ margin-top:18px }
+
+.welcome{ color: var(--muted); font-size: 1rem }
+.logout-pill{ background: #0f1724; color:#fff; border:none; padding:10px 14px; border-radius:12px; box-shadow: 0 8px 20px rgba(2,6,23,0.12); cursor:pointer; font-weight:700 }

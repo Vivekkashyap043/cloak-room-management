@@ -1,0 +1,56 @@
+/* Global design tokens and base layout moved from App.css */
+:root {
+  --bg: #fafafa;
+  --card: #ffffff;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-600: #1e40af;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+}
+
+/* Base page styles */
+body {
+  background: var(--bg);
+  color: #111827;
+  font-family: 'Poppins', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+/* soft page background decoration */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 10% 10%, rgba(37,99,235,0.03), transparent 10%), radial-gradient(ellipse at 90% 90%, rgba(16,185,129,0.02), transparent 12%);
+  pointer-events: none;
+}
+
+/* Reset & box-sizing to avoid unexpected overflow */
+*, *::before, *::after { box-sizing: border-box }
+
+body { margin: 0 }
+
+.container { max-width: 1100px; margin: 0 auto; padding: 24px }
+
+.app-root { min-height: 100vh; display:flex; justify-content:center }
+.app-root > * { width:100%; max-width:1400px; margin:0 auto; box-sizing:border-box }
+
+/* Generic card used throughout the UI */
+.card {
+  background: var(--card);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: 0 6px 20px rgba(17,24,39,0.06);
+  max-width: 900px;
+  margin: 12px auto;
+}
+
+/* Utility: primary button fallback (components may override) */
+button.primary { background: var(--accent); color: #fff; border: none }
+
+/* small responsive helpers still global */
+@media (max-width:760px) {
+  .container { padding-left: 12px; padding-right: 12px }
+}

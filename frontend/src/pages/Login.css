@@ -1,0 +1,143 @@
+/* Prevent selection or dragging on the whole page */
+* {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Full page container */
+.login-container {
+  height: 100vh;
+  width: 100%;
+  background-color: #ffffff; /* White background */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: "Poppins", sans-serif;
+  overflow: hidden;
+  position: fixed; /* Keeps centered even when scrolling */
+  top: 0;
+  left: 0;
+}
+
+/* Login form card */
+.login-form {
+  background: #ffffff;
+  padding: 40px 32px;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeIn 0.5s ease-in-out;
+  text-align: left;
+
+  /* Lock movement */
+  pointer-events: auto;
+  position: relative;
+}
+
+/* Prevent dragging logo image */
+.logo-img {
+  width: 120px;
+  height: auto;
+  object-fit: contain;
+  -webkit-user-drag: none;
+}
+
+/* Logo */
+.logo {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* Error message */
+.error {
+  background-color: #ffe6e6;
+  color: #a32208;
+  border: 1px solid #f5c2c2;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Labels */
+label {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+/* Input fields */
+.login-input {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 1rem;
+  width: 100%;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+  user-select: text; /* allow typing & selection inside input */
+}
+
+.login-input:focus {
+  border-color: #a32208;
+  outline: none;
+  box-shadow: 0 0 5px rgba(163, 34, 8, 0.3);
+}
+
+/* Button styling */
+.loginbtn {
+  background: #a32208; /* your color */
+  color: #fff;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  margin-top: 8px;
+}
+
+.loginbtn:hover {
+  background: #821b06;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(163, 34, 8, 0.3);
+}
+
+/* Remember me + footer */
+.footer {
+  margin-top: 10px;
+  text-align: center;
+  color: #888;
+  font-size: 0.85rem;
+}
+
+/* Smooth fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .login-form {
+    padding: 28px 20px;
+    border-radius: 12px;
+  }
+
+  .logo-img {
+    width: 100px;
+  }
+}
+
+
