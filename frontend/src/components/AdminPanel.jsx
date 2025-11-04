@@ -10,6 +10,10 @@ export default function AdminPanel({ token }) {
   const [notFound, setNotFound] = useState(false)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [previewCount, setPreviewCount] = useState(null)
+  const [previewRows, setPreviewRows] = useState([])
   // toasts removed — use inline messages via setMessage
 
   async function addUser(e) {
@@ -45,9 +49,15 @@ export default function AdminPanel({ token }) {
         method: 'DELETE',
         headers: { Authorization: 'Bearer ' + token }
       })
-      const data = await res.json()
-      if (!res.ok) return setMessage(data.message || 'Failed')
-      setMessage('User deleted')
+      let data = {}
+      try { data = await res.json() } catch (e) { /* ignore non-json */ }
+      if (!res.ok) {
+        return setMessage(data.message || `Delete failed (${res.status})`)
+      }
+      // show server-provided message if available
+      const msg = data.message || 'User deleted'
+      const extra = data.deletedRecords !== undefined ? ` (${data.deletedRecords} returned records removed)` : ''
+      setMessage(msg + extra)
       setDeleteUsername('')
       setSearchResult(null)
     } catch (err) {
@@ -81,6 +91,45 @@ export default function AdminPanel({ token }) {
 
   async function purge() {
     // purge removed from left panel; database purge is handled in the Database Management card
+  }
+
+  async function previewDeleteRange() {
+    if (!fromDate || !toDate) return setMessage('Please provide from and to dates')
+    setLoading(true)
+    setMessage('')
+    try {
+      const qs = `?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`
+      const res = await fetch(`/api/admin/records/preview-delete${qs}`, { headers: { Authorization: 'Bearer ' + token } })
+      const data = await res.json()
+      if (!res.ok) return setMessage(data.message || 'Preview failed')
+      setPreviewCount(data.count)
+      setPreviewRows(data.rows || [])
+      setMessage(`Preview: ${data.count} records will be deleted`)
+    } catch (err) {
+      setMessage('Server error')
+    } finally { setLoading(false) }
+  }
+
+  async function deleteRange() {
+    if (!fromDate || !toDate) return setMessage('Please provide from and to dates')
+    if (!confirm(`Permanently delete returned records from ${fromDate} to ${toDate}? This will remove DB rows and uploaded photos.`)) return
+    setLoading(true)
+    setMessage('')
+    try {
+      const qs = `?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`
+      const res = await fetch(`/api/admin/records/delete-range${qs}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
+      const data = await res.json()
+  if (!res.ok) return setMessage(data.message || `Delete failed (${res.status})`)
+  // show server-provided message if available
+  const msg = data.message || `Deleted ${data.deletedRows || 0} records`
+  setMessage(msg)
+      setPreviewCount(null)
+      setPreviewRows([])
+      setFromDate('')
+      setToDate('')
+    } catch (err) {
+      setMessage('Server error')
+    } finally { setLoading(false) }
   }
 
   return (
@@ -119,6 +168,19 @@ export default function AdminPanel({ token }) {
             <div className="found">No user selected</div>
           )}
         </div>
+      </div>
+
+      <hr style={{ margin: '18px 0', border: 'none', borderTop: '1px solid #eef2f6' }} />
+
+      <div className="delete-range">
+        <label className="small">Delete Returned Records by Date Range</label>
+        <div className="inline-row" style={{ gap: 8, alignItems: 'center' }}>
+          <input className="large-input" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+          <input className="large-input" type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+          <button className="ghost" onClick={previewDeleteRange} disabled={loading}>{loading ? 'Checking...' : 'Preview'}</button>
+          <button className="ghost danger" onClick={deleteRange} disabled={loading || !fromDate || !toDate}>{loading ? 'Working...' : 'Delete Range'}</button>
+        </div>
+        {previewCount !== null && <div style={{ marginTop: 8 }}>Preview: <strong>{previewCount}</strong> records will be deleted</div>}
       </div>
 
       {message && <div className="message">{message}</div>}

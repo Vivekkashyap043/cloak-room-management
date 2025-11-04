@@ -7,20 +7,28 @@ async function run() {
   console.log('Uploads dir:', uploadsDir);
   try {
     // select all records and their photo paths
-    const [rows] = await pool.query('SELECT id, person_photo_path, things_photo_path, status FROM records');
+    const [rows] = await pool.query('SELECT id, person_photo_path, status FROM records');
     console.log(`Found ${rows.length} records in DB`);
     let missing = [];
     let present = 0;
     for (const r of rows) {
-      for (const key of ['person_photo_path', 'things_photo_path']) {
-        const p = r[key];
-        if (!p) continue;
+      if (r.person_photo_path) {
+        const p = r.person_photo_path;
         const rel = p.replace(/^[/\\]+/, '');
         const full = path.join(__dirname, '..', rel);
         const exists = fs.existsSync(full);
-        if (!exists) missing.push({ id: r.id, key, path: p, status: r.status });
+        if (!exists) missing.push({ id: r.id, key: 'person_photo_path', path: p, status: r.status });
         else present++;
       }
+    }
+
+    // check item-level photos
+    const [items] = await pool.query('SELECT id, item_photo_path FROM items WHERE item_photo_path IS NOT NULL');
+    for (const it of items) {
+      const rel = it.item_photo_path.replace(/^[/\\]+/, '');
+      const full = path.join(__dirname, '..', rel);
+      if (!fs.existsSync(full)) missing.push({ itemId: it.id, key: 'items.item_photo_path', path: it.item_photo_path });
+      else present++;
     }
 
     console.log(`Present files: ${present}, Missing file references: ${missing.length}`);

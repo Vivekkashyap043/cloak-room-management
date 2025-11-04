@@ -1,6 +1,6 @@
 # Clock Room Management
 
-This repository contains a small full-stack app for managing clock-room check-in/out records. It consists of a Node/Express backend with MySQL and a React + Vite frontend. This README documents setup steps, DB schema, key endpoints, scripts, and troubleshooting notes.
+This repository contains a small full-stack app for managing cloak-room check-in/out records. It consists of a Node/Express backend with MySQL and a React + Vite frontend. This README documents setup steps, DB schema, key endpoints, scripts, and troubleshooting notes.
 
 ---
 
@@ -9,238 +9,166 @@ This repository contains a small full-stack app for managing clock-room check-in
 - `backend/` — Node.js + Express server, multer uploads, MySQL access via `mysql2` pool.
   - `routes/` — Express route handlers (including `admin.js` and `records.js`).
   - `uploads/` — disk directory where uploaded photos are stored (served at `/uploads`).
-  - `scripts/check_uploads.js` — read-only script to compare DB photo paths to files on disk.
-  - `logs/audit.log` — append-only audit log (JSON lines) written by admin delete flows.
-  - `package.json` — backend dependencies and start script.
+  # Cloak Room Management — Setup & Quickstart
 
-- `frontend/` — React + Vite UI.
-  - `src/` — React source files including `pages/AdminDashboard.jsx`.
-  - `vite.config.js` — dev server proxy (configured to forward `/api` and `/uploads` to backend in dev).
-  - `package.json` — frontend dependencies and dev scripts.
+  This repository contains a small full-stack app for managing cloak-room check-in/out records. It uses:
+  - Backend: Node.js + Express, MySQL (mysql2), multer for uploads.
+  - Frontend: React (Vite).
 
----
+  This README gives simple, step-by-step instructions to get the project running on a local machine (Windows PowerShell examples). It also documents the database schema and admin actions (deleting users/records). No complex authentication explanation is included — just enough to run and test locally.
 
-## Setup from scratch (step-by-step)
+  ## Table of contents
+  - Prerequisites
+  - Clone the repo
+  - Backend setup (env, deps, DB)
+  - Frontend setup
+  - Running the app (dev)
+  - Database schema (what fields mean)
+  - Admin delete behavior and audit logs
+  - Helpful scripts and troubleshooting
 
-This section explains how to get the project running from an empty machine. Follow each step in order. Commands below are PowerShell examples for Windows; adapt them if you're using macOS or Linux.
+  ## Prerequisites
+  - Node.js (LTS recommended, v16+). Install from https://nodejs.org/
+  - MySQL Server (or MariaDB). Make sure you can create a database and run SQL scripts.
+  - git (to clone the repo)
 
-Prerequisites
-- Node.js (LTS recommended, 16+). Install from https://nodejs.org/
-- npm (bundled with Node.js)
-- MySQL server (or MariaDB). Ensure you can create a database and a user.
+  ## 1) Clone the repository
 
-1) Clone the repository
+  Open PowerShell and run:
 
-```powershell
-cd C:\path\to\projects
-git clone https://github.com/Vivekkashyap043/cloak-room-management.git
-cd cloak-room-management
-```
+  ```powershell
+  cd C:\path\to\projects
+  git clone https://github.com/Vivekkashyap043/cloak-room-management.git
+  cd cloak-room-management
+  ```
 
-2) Backend: install dependencies and configure environment
+  ## 2) Backend: install dependencies and create an .env
 
-```powershell
-cd D:\projects\clock-room-management\backend
-npm install
-```
+  ```powershell
+  cd .\backend
+  npm install
+  ```
 
-Create a `.env` file by copying the example and editing values:
+  Create a `.env` file at `backend/.env`. If an example file exists, copy it. Otherwise create a new `.env` with these values (replace placeholders):
 
-```powershell
-copy .\.env.example .\.env
-notepad .\.env
-```
+  ```
+  DB_HOST=localhost
+  DB_USER=your_mysql_user
+  DB_PASS=your_mysql_password
+  DB_NAME=cloakroomdb
+  PORT=4000
+  JWT_SECRET=some-long-secret
+  ```
 
-Edit `.env` and set these values (example):
+  Notes:
+  - `DB_NAME` above should match the database name you'll create below (the included schema uses `cloakroomdb`).
+  - `JWT_SECRET` is used by the simple admin auth middleware — pick any long random string for development.
 
-- DB_HOST=localhost
-- DB_USER=your_mysql_user
-- DB_PASS=your_mysql_password
-- DB_NAME=clockroom
-- PORT=4000
-- JWT_SECRET=some-long-secret
+  ## 3) Create the database and load schema
 
-3) Backend: create the database and load schema
+  Open a MySQL client and run the provided schema file. From PowerShell you can run:
 
-Open your MySQL client and run:
+  ```powershell
+  # adjust username/password as needed
+  mysql -u root -p < .\backend\schema.sql
+  ```
 
-```sql
-CREATE DATABASE IF NOT EXISTS clockroom CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE clockroom;
-SOURCE schema.sql;
-```
+  Or: open a MySQL client and run the SQL commands from `backend/schema.sql`. The provided schema creates these tables: `users`, `records`, `items`.
 
-Or use the `mysql` CLI from PowerShell (adjust username/password):
+  ## 4) Start the backend (development)
 
-```powershell
-mysql -u your_mysql_user -p your_mysql_password < .\schema.sql
-```
+  ```powershell
+  cd .\backend
+  npm run dev    # or `node server.js` / `npm start` depending on your scripts
+  ```
 
-4) Start the backend server
+  By default the backend listens on the port in `.env` (commonly 4000). It serves API routes under `/api` and uploaded images under `/uploads` (files saved to `backend/uploads`).
 
-```powershell
-npm start
-# during development you can use: nodemon server.js
-```
+  ## 5) Frontend: install dependencies and start dev server
 
-By default the backend listens on the port set in `.env` (commonly 4000). It serves API routes under `/api` and uploaded images under `/uploads`.
+  Open a new terminal:
 
-5) Frontend: install and run (development)
+  ```powershell
+  cd .\frontend
+  npm install
+  npm run dev
+  ```
 
-Open a new terminal and run:
+  Vite usually opens at http://localhost:5173. The dev server is configured to proxy `/api` and `/uploads` to the backend, so the frontend can call relative paths like `fetch('/api/records')` and render images from `/uploads/<filename>`.
 
-```powershell
-cd D:\projects\clock-room-management\frontend
-npm install
-npm run dev
-```
+  ## 6) Quick manual check (smoke test)
+  - Open the frontend in your browser.
+  - Use the Entry form to create a record (upload person photo and item photos). Submit should call `/api/records`.
+  - Use the Exit page to search for the token and return the item.
+  - Use the Admin panel to preview or delete returned records.
 
-Vite runs the dev server on http://localhost:5173 by default. Vite is configured to proxy `/api` and `/uploads` to the backend during development so the frontend can use relative fetch paths such as `/api/records`.
+  ## Database schema (simple explanation)
+  The important tables are:
 
-6) Build for production (optional)
+  - `users` — simple accounts used by the admin UI. Important columns:
+    - `id`, `username`, `password_hash`, `role` (`admin` or `user`), `location` (`gents location` or `ladies location`)
 
-```powershell
-cd D:\projects\clock-room-management\frontend
-npm run build
-```
+  - `records` — one row per deposit (a person leaves items). Important columns:
+    - `id` — primary key
+    - `token_number` — unique token label shown on tickets and QR codes
+    - `location` — which cloakroom (populated from the authenticated user's location)
+    - `person_photo_path` — web path such as `/uploads/<filename>` (may be NULL)
+    - `status` — `deposited` or `returned`
+    - `deposited_at`, `returned_at`
 
-If your backend and frontend are in the same repo layout, the backend will serve the built frontend from `../frontend/dist` automatically. Otherwise copy the `dist` output to your webserver.
+  - `items` — each record may have multiple item rows. Important columns:
+    - `id`, `record_id` (FK -> records.id), `item_name`, `item_count`, `item_photo_path` (optional)
 
----
+  Notes:
+  - `items.record_id` has `ON DELETE CASCADE` so deleting records will also remove associated items in the DB. Upload files are not automatically removed from disk by MySQL — the server code unlinks files when deleting records.
 
----
+  ## Admin deletion behavior and audit logs
+  The admin routes support:
+  - Deleting a specific user: `DELETE /api/admin/users/:username` — the backend now deletes that user and also permanently deletes any `returned` records for the user's `location`. When deleting records the server:
+    - Locks selected rows in a transaction
+    - Unlinks filesystem files referenced by `person_photo_path` and `items.item_photo_path` (if present)
+    - Deletes the DB rows (items are cascade-deleted)
+    - Writes a JSON line to `backend/logs/audit.log` with per-record unlink results (success/failure reasons)
 
-## Backend configuration and environment
+  - Deleting returned records by date range: `DELETE /api/admin/records/delete-range?from=YYYY-MM-DD&to=YYYY-MM-DD` — permanently removes returned records in the date range and their photo files.
 
-Required environment variables (example):
+  Audit log format (append-only JSON lines)
+  - Log lines are appended to `backend/logs/audit.log`. Each entry includes `action`, `admin`, `timestamp`, `deletedRows`, and `perRecord` where each record lists unlink results for person and item photos. This helps verify which files were removed successfully.
 
-- `DB_HOST` — MySQL host
-- `DB_USER` — MySQL user
-- `DB_PASS` — MySQL password
-- `DB_NAME` — MySQL database
-- `PORT` — server port (default used in dev is 4000)
-- `JWT_SECRET` — secret for admin auth tokens
+  ## Helpful scripts
+  - `node backend/scripts/check_uploads.js` — scans DB photo path columns and reports missing files on disk. Useful after bulk deletes to find stale references.
 
-The backend uses `multer` to write uploaded files to `backend/uploads` and exposes that directory via `app.use('/uploads', express.static(uploadsDir))`, so uploaded files are available at `/uploads/<filename>`.
+  ## Troubleshooting tips
+  - If the frontend shows proxy errors (ECONNREFUSED) make sure the backend is running and using the port set in `backend/.env`.
+  - If image upload/deletion behaves unexpectedly, check `backend/logs/audit.log` for unlink errors and the `backend/uploads` folder for files.
+  - If you're missing `req.user.location` in production, ensure your auth middleware sets `req.user.location` correctly (the server relies on it to filter and delete records by location).
 
-### Audit log
+  ## Security notes (short)
+  - Keep `JWT_SECRET` private in production.
+  - Uploaded files are stored on disk; if you'll run this in production, consider moving uploads to a dedicated object store (S3) or protect the uploads directory.
 
-Admin deletion flows (permanent purge and date-range deletes) write append-only audit entries as JSON lines to `backend/logs/audit.log`. Each line looks like:
+  ## Common commands summary (PowerShell)
+  ```powershell
+  # Backend
+  cd .\backend
+  npm install
+  # edit backend/.env (DB credentials, PORT, JWT_SECRET)
+  npm run dev
 
-```json
-{
-  "action": "permanent-delete",
-  "performedBy": "admin-username",
-  "timestamp": "2025-11-03T12:34:56.789Z",
-  "deletedRows": 5,
-  "perRecord": [
-    { "id": 123, "person_photo_path": "/uploads/abc.jpg", "person_unlink": { "success": true } },
-    { "id": 124, "things_photo_path": "/uploads/def.jpg", "things_unlink": { "success": false, "reason": "ENOENT" } }
-  ]
-}
-```
+  # Frontend
+  cd ..\frontend
+  npm install
+  npm run dev
 
-This lets you see per-file unlink successes/failures (the current policy is to commit DB deletions while recording unlink failures for observability). If you prefer rollback-on-unlink-failure, see "Changing unlink policy" below.
+  # Run upload checker
+  cd ..\backend
+  node .\scripts\check_uploads.js
+  ```
 
----
+  If you'd like, I can also:
+  - Add an `env.example` file to `backend/` and `frontend/` for convenience.
+  - Add a small admin-only UI to preview `perRecord` unlink results immediately after a delete.
+  - Change unlink behavior to rollback DB deletes if any unlink fails (currently unlink failures are recorded in the audit log but DB deletes proceed).
 
-## Database schema (reference)
-
-Below are the important tables and columns used by the app. Adjust names if your database differs.
-
-Example `records` table:
-
-```sql
-CREATE TABLE records (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  token_number VARCHAR(64),
-  person_name VARCHAR(255),
-  person_photo_path VARCHAR(512), -- e.g. '/uploads/<filename>' or NULL
-  things_photo_path VARCHAR(512), -- e.g. '/uploads/<filename>' or NULL
-  status ENUM('checked_in','returned','soft-deleted') DEFAULT 'checked_in',
-  submitted_at DATETIME,
-  returned_at DATETIME NULL,
+  If you want me to make any of those follow-ups, tell me which one and I'll implement it.
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-Example `users` table (admin accounts):
-
-```sql
-CREATE TABLE users (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  username VARCHAR(128) UNIQUE,
-  password_hash VARCHAR(255),
-  role VARCHAR(32) DEFAULT 'user',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-Adjust types for your environment. The backend code expects photo path columns to contain web-accessible paths starting with `/uploads/`.
-
----
-
-## Important backend scripts
-
-- `backend/scripts/check_uploads.js` — compares DB photo path columns (`person_photo_path`, `things_photo_path`) with files on disk and prints a summary of missing vs present files. Useful for auditing orphaned DB references.
-
-Run it from the backend folder:
-
-```powershell
-cd D:\projects\clock-room-management\backend
-node .\scripts\check_uploads.js
-```
-
----
-
-## Admin endpoints (selected)
-
-- `POST /api/admin/users` — create user (body: `{ username, password }`)
-- `GET  /api/admin/users/:query` — search user
-- `DELETE /api/admin/users/:username` — delete user
-- `GET  /api/admin/records/preview-permanent` — preview records marked soft-deleted
-- `DELETE /api/admin/records/permanent` — permanently delete soft-deleted records (transactional; unlinks files and logs per-file results)
-- `GET  /api/admin/records/preview-delete?from=YYYY-MM-DD&to=YYYY-MM-DD` — preview records for date-range delete
-- `DELETE /api/admin/records/delete-range?from=...&to=...` — delete records in the date range (transactional; logs unlink outcomes)
-
-Refer to `backend/routes/admin.js` for full implementations and details.
-
----
-
-## Frontend notes
-
-- Use relative requests like `fetch('/api/admin/records/preview-delete?...')` — Vite dev proxy forwards these to the backend.
-- The frontend expects photo path fields in server responses to already be web paths (e.g. `/uploads/abc.jpg`). Use the path returned from the backend as `<img src={r.person_photo_path} />`.
-
-If the dev Vite server is not proxied, image requests to `/uploads/...` must point directly to the backend origin.
-
----
-
-## Changing unlink policy
-
-Current behavior: the server wraps DB deletions in a transaction and attempts filesystem unlinking for any referenced files. The unlink results are recorded in the audit log; DB rows are removed even if some unlink operations fail.
-
-Alternatives:
-
-- Rollback on unlink failure: change the code in `backend/routes/admin.js` to throw/rollback if any unlink returns failure. This prevents records being removed when file deletion fails.
-- Background unlink queue: commit DB delete and queue failed unlink tasks to a background worker which retries; this keeps DB clean but handles transient filesystem issues.
-
-If you'd like, I can change the code to one of these policies — tell me which option you prefer.
-
----
-
-## Troubleshooting
-
-- Vite parser errors: these are usually caused by malformed JSX, duplicate imports, or stray Unicode characters in JSX. If you see `Unexpected token` pointing to a line with JSX comments or interpolations, inspect for unclosed comment blocks or duplicate imports.
-- Backend file-not-found unlink errors: check `backend/logs/audit.log` to see which unlink operations failed and why. For `ENOENT` the file was already missing; `EACCES` indicates permission issues.
-- If the frontend images don't show: verify the backend is running and that `backend/uploads` contains the referenced files, and that Vite is proxying `/uploads` to the backend in dev.
-
----
-
-## Next steps & E2E verification checklist
-
-1. Start backend (with correct env vars) and confirm it serves `/uploads` (open `http://localhost:4000/uploads/` and check a filename).
-2. Start frontend (`npm run dev`) — ensure Vite shows proxy entries for `/api` and `/uploads` in the console.
-3. Use the Admin UI to preview and perform delete operations.
-4. Inspect `backend/logs/audit.log` for per-file unlink statuses.
-5. Run `node backend/scripts/check_uploads.js` to produce a snapshot of DB vs disk file presence.

@@ -15,7 +15,9 @@ export default function AdminDashboard({ token, username, onLogout }) {
   // user creation
   const [newUser, setNewUser] = useState("");
   const [newPass, setNewPass] = useState("");
+  const [newLocation, setNewLocation] = useState('');
   const [creating, setCreating] = useState(false);
+  const [newUserMsg, setNewUserMsg] = useState(null); // { type: 'success'|'error'|'info', text }
 
   // user search/delete
   const [query, setQuery] = useState("");
@@ -39,6 +41,14 @@ export default function AdminDashboard({ token, username, onLogout }) {
   }, [toast]);
   const showToast = (type, text) => setToast({ type, text });
 
+  // inline add-user message (auto-dismiss)
+  useEffect(() => {
+    if (!newUserMsg) return;
+    const id = setTimeout(() => setNewUserMsg(null), 4200);
+    return () => clearTimeout(id);
+  }, [newUserMsg]);
+  const showNewUserMsg = (type, text) => setNewUserMsg({ type, text });
+
   // Permanent purge preview state
   const [permPreviewLoading, setPermPreviewLoading] = useState(false);
   const [permPreviewRows, setPermPreviewRows] = useState([]);
@@ -53,21 +63,27 @@ export default function AdminDashboard({ token, username, onLogout }) {
 
   async function createUser(e) {
     e?.preventDefault();
-    if (!newUser.trim() || !newPass) return showToast("error", "Provide username & password.");
+    if (!newUser.trim() || !newPass || !newLocation) return showToast("error", "Provide username, password & location.");
     setCreating(true);
     try {
       const res = await fetch(`/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-        body: JSON.stringify({ username: newUser.trim(), password: newPass }),
+        body: JSON.stringify({ username: newUser.trim(), password: newPass, location: newLocation }),
       });
       let data = {};
       try { data = await res.json(); } catch (err) {}
       if (!res.ok) throw new Error((data && data.message) || res.statusText || "Failed");
-      showToast("success", `User "${(data && data.username) || newUser}" created`);
+      const createdName = (data && data.username) || newUser;
+      showToast("success", `User "${createdName}" created`);
+      showNewUserMsg('success', `User "${createdName}" created`);
       setNewUser(""); setNewPass("");
+      // reset location
+      setNewLocation('');
     } catch (err) {
-      showToast("error", err.message || "Server error");
+      const msg = err && err.message ? err.message : 'Server error';
+      showToast("error", msg);
+      showNewUserMsg('error', msg);
     } finally { setCreating(false); }
   }
 
@@ -185,6 +201,16 @@ export default function AdminDashboard({ token, username, onLogout }) {
               <form className="form-vertical" onSubmit={createUser}>
                 <input value={newUser} onChange={e => setNewUser(e.target.value)} placeholder="Username" />
                 <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Password" />
+                <select value={newLocation} onChange={e => setNewLocation(e.target.value)}>
+                  <option value="" disabled>Select location</option>
+                  <option value="gents location">gents location</option>
+                  <option value="ladies location">ladies location</option>
+                </select>
+                {newUserMsg && (
+                  <div style={{ marginTop: 6 }} className={`msg ${newUserMsg.type}`}>
+                    {newUserMsg.text}
+                  </div>
+                )}
                 <div className="row-actions">
                   <button className="btn-primary" type="submit" disabled={creating}>{creating ? "Creating..." : "Add User"}</button>
                 </div>
@@ -226,7 +252,7 @@ export default function AdminDashboard({ token, username, onLogout }) {
           <aside className="card right-card">
             <div className="db-inner">
               <div className="db-white-head"><h3>Database Management</h3></div>
-              <p className="db-desc">Permanently delete all records or delete records by submitted date range. Both actions are irreversible.</p>
+              <p className="db-desc">Permanently delete all records or delete records by deposited date range. Both actions are irreversible.</p>
 
               <form className="db-confirm" onSubmit={previewPermanent}>
                 <input className="confirm-input" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder='Type "DELETE" to confirm' />
@@ -236,7 +262,7 @@ export default function AdminDashboard({ token, username, onLogout }) {
               <hr />
 
               <div className="db-range">
-                <h4>Delete records by submitted date</h4>
+                <h4>Delete records by deposited date</h4>
                 <p className="small">Select the date range to delete records.</p>
                 <form className="range-form" onSubmit={previewRange}>
                   <label className="range-field">
@@ -264,19 +290,18 @@ export default function AdminDashboard({ token, username, onLogout }) {
         <div className="modal-backdrop">
           <div className="modal-card">
             <h3>Preview: {previewCount} record(s) matched</h3>
-            <p className="small">The following records have <code>status = 'returned'</code> and <code>submitted_at</code> within {fromDate} - {toDate}.</p>
+            <p className="small">The following records have <code>status = 'returned'</code> and <code>deposited_at</code> within {fromDate} - {toDate}.</p>
             <div className="preview-list">
               {previewRows && previewRows.length ? (
                 <table className="preview-table">
                   <thead>
-                    <tr><th>Token</th><th>Person</th><th>Submitted At</th><th>Returned At</th></tr>
+                    <tr><th>Token</th><th>Deposited At</th><th>Returned At</th></tr>
                   </thead>
                   <tbody>
                     {previewRows.slice(0, 50).map(r => (
                       <tr key={r.id}>
                         <td>{r.token_number}</td>
-                        <td>{r.person_name}</td>
-                        <td>{r.submitted_at}</td>
+                        <td>{r.deposited_at}</td>
                         <td>{r.returned_at || '-'}</td>
                       </tr>
                     ))}
@@ -304,14 +329,13 @@ export default function AdminDashboard({ token, username, onLogout }) {
               {permPreviewRows && permPreviewRows.length ? (
                 <table className="preview-table">
                   <thead>
-                    <tr><th>Token</th><th>Person</th><th>Submitted At</th><th>Returned At</th></tr>
+                    <tr><th>Token</th><th>Deposited At</th><th>Returned At</th></tr>
                   </thead>
                   <tbody>
                     {permPreviewRows.slice(0, 50).map(r => (
                       <tr key={r.id}>
                         <td>{r.token_number}</td>
-                        <td>{r.person_name}</td>
-                        <td>{r.submitted_at}</td>
+                        <td>{r.deposited_at}</td>
                         <td>{r.returned_at || '-'}</td>
                       </tr>
                     ))}

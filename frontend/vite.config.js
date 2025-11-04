@@ -8,7 +8,8 @@ export default defineConfig({
     proxy: {
       // Proxy API requests to backend during development
       '/api': {
-        target: 'localhost:4000',
+        // include protocol so the proxy correctly resolves the target
+        target: 'http://localhost:4000',
         changeOrigin: true,
         secure: false,
       },

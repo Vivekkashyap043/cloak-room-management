@@ -28,23 +28,48 @@ const upload = multer({
 });
 
 // create record (entry)
-router.post('/', authenticate, upload.fields([{ name: 'person_photo' }, { name: 'things_photo' }]), async (req, res) => {
+// New flow: person_name removed. Items are sent as JSON in `items` field (array of { name, count }).
+// Support optional per-item photo uploads submitted as multiple files under field name 'item_photos'
+router.post('/', authenticate, upload.fields([{ name: 'person_photo', maxCount: 1 }, { name: 'item_photos', maxCount: 50 }]), async (req, res) => {
   try {
-    const { token_number, person_name, things_name, status } = req.body;
-    if (!token_number || !person_name || !things_name || !status) return res.status(400).json({ message: 'Missing required fields' });
-    // require uploaded files
-    if (!req.files || !req.files['person_photo'] || !req.files['things_photo']) return res.status(400).json({ message: 'Both person_photo and things_photo are required' });
-    // prevent duplicate active token (status = 'submitted')
-    const [ex] = await pool.query("SELECT id FROM records WHERE token_number = ? AND status = 'submitted' LIMIT 1", [token_number]);
-    if (ex.length) return res.status(400).json({ message: 'Token number already in use' });
+    const { token_number, status } = req.body;
+    let items = [];
+    try { items = req.body.items ? JSON.parse(req.body.items) : []; } catch (e) { items = []; }
 
-    const person_photo_path = '/uploads/' + req.files['person_photo'][0].filename;
-    const things_photo_path = '/uploads/' + req.files['things_photo'][0].filename;
+  if (!token_number || !status) return res.status(400).json({ message: 'Missing required fields: token_number and status' });
+
+  // determine location from authenticated user (auto-filled)
+  const userLocation = (req.user && req.user.location) ? req.user.location : (req.body.location || null);
+  // if location couldn't be determined, reject to avoid accidental cross-location inserts
+  if (!userLocation) return res.status(403).json({ message: 'Unauthorized: missing user location' });
+
+  // prevent duplicate active token (status = 'deposited') at the same location
+  const [ex] = await pool.query("SELECT id FROM records WHERE token_number = ? AND status = 'deposited' AND location = ? LIMIT 1", [token_number, userLocation]);
+  if (ex.length) return res.status(409).json({ message: 'Token is already issued' });
+
+  const person_photo_path = (req.files && req.files['person_photo'] && req.files['person_photo'][0]) ? '/uploads/' + req.files['person_photo'][0].filename : null;
+  const itemFiles = (req.files && req.files['item_photos']) ? req.files['item_photos'] : [];
+
     const now = new Date();
-    // insert submitted_at to match schema
-    await pool.query('INSERT INTO records (token_number, person_name, person_photo_path, things_name, things_photo_path, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [token_number, person_name, person_photo_path, things_name, things_photo_path, status, now]);
-    res.json({ message: 'record created' });
+    // Insert record without things_name (items are stored in items table). deposited_at stores the entry timestamp.
+    const [ins] = await pool.query('INSERT INTO records (token_number, location, person_photo_path, status, deposited_at) VALUES (?, ?, ?, ?, ?)',
+      [token_number, userLocation, person_photo_path, status, now]);
+
+    const recordId = ins.insertId;
+
+    // insert items rows if provided
+    if (items && items.length) {
+      // Map item files to items by order: frontend should append item_photos in same order as the items array
+      const itemInserts = items.map((it, idx) => {
+        const file = itemFiles[idx];
+        // prefer explicit item_photo_path in items JSON, else map file by order
+        const photoPath = it.item_photo_path || it.photo_path || (file ? '/uploads/' + file.filename : null);
+        return [recordId, it.name, it.count || 1, photoPath];
+      });
+      await pool.query('INSERT INTO items (record_id, item_name, item_count, item_photo_path) VALUES ?', [itemInserts]);
+    }
+
+    res.json({ message: 'record created', recordId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -56,37 +81,48 @@ router.get('/token/:token', authenticate, async (req, res) => {
   try {
     const token = req.params.token;
     console.log("Token ", token);
-  const [rows] = await pool.query("SELECT * FROM records WHERE token_number = ? AND status = 'submitted' LIMIT 1", [token]);
-    console.log("Record", rows);
-    if (rows.length === 0) return res.status(404).json({ message: 'Not found' });
-    res.json(rows[0]);
+    // enforce location matching: only return records for the authenticated user's location
+    const userLocation = (req.user && req.user.location) ? req.user.location : null;
+    if (!userLocation) return res.status(403).json({ message: 'Unauthorized: missing user location' });
+    const [rows] = await pool.query(
+      "SELECT r.*, i.id as item_id, i.item_name, i.item_count, i.item_photo_path as item_photo_path FROM records r LEFT JOIN items i ON i.record_id = r.id WHERE r.token_number = ? AND r.location = ? LIMIT 100",
+      [token, userLocation]
+    );
+    if (!rows || rows.length === 0) return res.status(404).json({ message: 'Not found' });
+    // rows may contain duplicated record rows if multiple items; normalize into single record with items array
+    const recordRow = rows[0];
+    const record = {
+      id: recordRow.id,
+      token_number: recordRow.token_number,
+      location: recordRow.location,
+  person_photo_path: recordRow.person_photo_path,
+      status: recordRow.status,
+      deposited_at: recordRow.deposited_at,
+      returned_at: recordRow.returned_at,
+      items: []
+    };
+    for (const r of rows) {
+      if (r.item_id) record.items.push({ id: r.item_id, item_name: r.item_name, item_count: r.item_count, item_photo_path: r.item_photo_path || null });
+    }
+    res.json(record);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// get by person name (may return many)
-router.get('/person/:name', authenticate, async (req, res) => {
-  try {
-    const name = req.params.name;
-    console.log("Name: ", name);
-  const [rows] = await pool.query("SELECT * FROM records WHERE person_name LIKE ? AND status = 'submitted'", ['%' + name + '%']);
-    console.log("returned rows", rows);
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+// NOTE: person-name based lookup removed (person_name no longer stored)
 
 // exit -> mark record as Returned and set exited_at
 router.post('/exit/:token', authenticate, async (req, res) => {
   try {
     const token = req.params.token;
     const now = new Date();
-  const [result] = await pool.query("UPDATE records SET status = 'returned', returned_at = ? WHERE token_number = ? AND status = 'submitted'", [now, token]);
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found or already returned' });
+  // only mark deposited records at the same location as returned
+  const userLocation = (req.user && req.user.location) ? req.user.location : null;
+  if (!userLocation) return res.status(403).json({ message: 'Unauthorized: missing user location' });
+  const [result] = await pool.query("UPDATE records SET status = 'returned', returned_at = ? WHERE token_number = ? AND status = 'deposited' AND location = ?", [now, token, userLocation]);
+  if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found or already returned' });
     res.json({ message: 'record marked as returned' });
   } catch (err) {
     console.error(err);

@@ -142,6 +142,34 @@ input:focus {
   outline: none;
 }
 
+/* Style select elements in forms to visually match text inputs */
+.form-vertical select, .search-form select {
+  width:100%;
+  padding: 14px 16px;
+  border-radius: var(--input-radius);
+  border: 1px solid rgba(15,23,36,0.06);
+  background: linear-gradient(180deg,#fff,#fbfdff);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+  font-size: 0.96rem;
+  color: #0f1724;
+  box-sizing: border-box;
+  transition: border-color .14s ease, box-shadow .14s ease, transform .12s ease;
+  -webkit-appearance: none; /* remove default arrow */
+  -moz-appearance: none;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #0f1724 50%), linear-gradient(135deg, #0f1724 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 44px; /* space for pseudo-arrow */
+}
+.form-vertical select:focus {
+  border-color: rgba(37,99,235,0.85);
+  box-shadow: 0 10px 30px rgba(37,99,235,0.06);
+  transform: translateY(-1px);
+  outline: none;
+}
+
 .form-vertical { display:flex; flex-direction:column; gap:14px; }
 .row-actions { display:flex; gap:12px; justify-content:flex-start; align-items:center; }
 .btn-primary {

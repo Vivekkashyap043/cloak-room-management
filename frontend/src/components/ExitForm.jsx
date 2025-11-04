@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react'
 import './ExitForm.css'
+import QRScanner from './QRScanner'
 import Spinner from './icons/Spinner'
 
 export default function ExitForm({ token }) {
   // Use relative paths so dev proxy or same-origin works
   const [tokenNumber, setTokenNumber] = useState('')
-  const [searchName, setSearchName] = useState('')
   const [result, setResult] = useState(null)
   const [message, setMessage] = useState('')
+  const [showScanner, setShowScanner] = useState(false)
+  const [imageModal, setImageModal] = useState({ src: null, alt: '' })
+  const imageModalCloseRef = useRef(null)
 
   // toasts removed — use inline messages via setMessage
 
@@ -26,40 +29,20 @@ export default function ExitForm({ token }) {
         return setMessage('Unexpected response from server')
       }
       if (!res.ok) return setMessage(data.message || 'Not found')
-      // only show records that are still submitted (active)
-      if (data && String(data.status).toLowerCase() === 'submitted') setResult([data])
-      else setMessage('No submitted record found for that token')
+      // Show record if found; provide clearer messages for non-deposited statuses
+      if (data && String(data.status).toLowerCase() === 'deposited') {
+        setResult([data])
+      } else if (data && String(data.status).toLowerCase() === 'returned') {
+        setMessage('Item already returned')
+      } else {
+        setMessage(data.message || `Record status: ${data.status || 'unknown'}`)
+      }
     } catch (err) {
       setMessage('Server error')
     }
   }
 
-  async function findByName(e) {
-    e && e.preventDefault()
-    setMessage('')
-    try {
-      if (!searchName.trim()) return setMessage('Enter a name to search')
-  const res = await fetch(`/api/records/person/${encodeURIComponent(searchName)}`, {
-        headers: { Authorization: 'Bearer ' + token }
-      })
-      let data
-      try {
-        data = await res.json()
-      } catch (parseErr) {
-        if (!res.ok) return setMessage(res.statusText || 'Not found')
-        return setMessage('Unexpected response from server')
-      }
-        if (!res.ok) return setMessage(data.message || 'Not found')
-        // debug: log server response for troubleshooting
-        console.debug('findByName response', { status: res.status, body: data })
-        if (!Array.isArray(data)) return setResult([])
-        const submitted = data.filter(r => String(r.status).toLowerCase() === 'submitted')
-        if (submitted.length === 0) return setMessage(`No submitted records found (server returned ${data.length} rows)`) 
-        setResult(submitted)
-    } catch (err) {
-      setMessage('Server error')
-    }
-  }
+  // find by name removed (person_name no longer stored)
 
   async function exitRecord(r) {
     setMessage('')
@@ -70,8 +53,8 @@ export default function ExitForm({ token }) {
       })
       const data = await res.json()
   if (!res.ok) return setMessage(data.message || 'Failed')
-      setMessage('Returned: ' + r.token_number)
-      // remove the returned record from the displayed results (we only show Submitted records)
+  setMessage('Returned: ' + r.token_number)
+  // remove the returned record from the displayed results (we only show deposited records)
       setResult(prev => prev ? prev.filter(x => x.token_number !== r.token_number) : [])
     } catch (err) {
       setMessage('Server error')
@@ -83,26 +66,45 @@ export default function ExitForm({ token }) {
     if (tokenRef.current) tokenRef.current.focus()
   }, [])
 
+  // handle closing image modal with ESC and prevent background scroll
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') setImageModal({ src: null, alt: '' })
+    }
+    if (imageModal && imageModal.src) {
+      document.addEventListener('keydown', onKey)
+      // prevent background scroll
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      // focus close button when modal opens
+      try { setTimeout(() => imageModalCloseRef.current && imageModalCloseRef.current.focus(), 50) } catch (e) {}
+      return () => {
+        document.removeEventListener('keydown', onKey)
+        document.body.style.overflow = prev
+      }
+    }
+  }, [imageModal])
+
+  function handleQrDetected(result) {
+    if (!result) return
+    setTokenNumber(String(result).trim())
+    setShowScanner(false)
+  }
+
   return (
   <div className="entry-form-inner">
+    {showScanner && <QRScanner onDetected={handleQrDetected} onClose={() => setShowScanner(false)} />}
   <div className="exit-search-grid">
   <form onSubmit={findByToken} className="entry-vertical-form">
         <div className="form-group">
           <label htmlFor="exit-token">Find by Token</label>
-          <input id="exit-token" ref={tokenRef} className="large-input" placeholder="Enter token number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input id="exit-token" ref={tokenRef} className="large-input" placeholder="Enter token number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} />
+            <button type="button" className="ghost" onClick={() => setShowScanner(true)}>Scan QR</button>
+          </div>
         </div>
         <div className="form-actions">
           <button className="primary big" type="submit" aria-label="Find by token" disabled={!tokenNumber.trim()}>Find by Token</button>
-        </div>
-  </form>
-
-  <form onSubmit={findByName} className="entry-vertical-form">
-        <div className="form-group">
-          <label htmlFor="exit-name">Find by Person</label>
-          <input id="exit-name" className="large-input" placeholder="Search by person name" value={searchName} onChange={e => setSearchName(e.target.value)} />
-        </div>
-        <div className="form-actions">
-          <button className="primary big" type="submit" aria-label="Find by name" disabled={!searchName.trim()}>Find by Name</button>
         </div>
   </form>
   </div>
@@ -112,7 +114,7 @@ export default function ExitForm({ token }) {
       {result && result.length > 0 && (
         <div className="result-card card">
           <h3>Found Item</h3>
-          {/* Render a two-column form similar to Entry */}
+          {/* Render a two-column layout: left = token/details/items, right = person photo */}
           {result.map(r => (
             <div key={r.id} className="entry-grid" style={{ alignItems: 'start' }}>
               <div>
@@ -120,44 +122,58 @@ export default function ExitForm({ token }) {
                   <label>Token Number</label>
                   <input className="large-input" value={r.token_number} readOnly />
                 </div>
-                <div className="form-group">
-                  <label>Person Name</label>
-                  <input className="large-input" value={r.person_name} readOnly />
-                </div>
-                <div className="form-group">
-                  <label>Things Name</label>
-                  <input className="large-input" value={r.things_name} readOnly />
-                </div>
 
-                {r.submitted_at && (
+                {r.deposited_at && (
                   <div className="form-group">
-                    <label>Submitted At</label>
-                    <input className="large-input" value={new Date(r.submitted_at).toLocaleString()} readOnly />
+                    <label>Deposited At</label>
+                    <input className="large-input" value={new Date(r.deposited_at).toLocaleString()} readOnly />
                   </div>
                 )}
+
+                <div className="form-group">
+                  <label>Items</label>
+                  <div>
+                    {Array.isArray(r.items) && r.items.length > 0 ? (
+                      r.items.map(it => (
+                        <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            {it.item_photo_path ? <img onClick={() => setImageModal({ src: it.item_photo_path, alt: it.item_name })} src={it.item_photo_path} alt={it.item_name} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }} /> : <div style={{ width: 48, height: 48, display: 'grid', placeItems: 'center', background: '#f3f4f6', borderRadius: 6 }}>📦</div>}
+                            <div>{it.item_name}</div>
+                          </div>
+                          <div>× {it.item_count}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="muted">No items recorded</div>
+                    )}
+                  </div>
+                </div>
 
                 <div style={{ marginTop: 20, textAlign: 'center' }}>
                   <button className="primary big" onClick={() => exitRecord(r)}>{'Return Item'}</button>
                 </div>
-
               </div>
 
               <div>
                 <div style={{ display: 'flex', gap: 12 }}>
                   <div className="photo-box">
-                    <div className="photo-label">Person's Photo</div>
-                    {r.person_photo_path ? <img src={r.person_photo_path} alt="person" className="thumb" onLoad={e=>e.currentTarget.classList.add('loaded')} /> : <div className="photo-placeholder">No photo</div>}
-                  </div>
-
-                  <div className="photo-box">
-                    <div className="photo-label">Thing's Photo</div>
-                    {r.things_photo_path ? <img src={r.things_photo_path} alt="things" className="thumb" onLoad={e=>e.currentTarget.classList.add('loaded')} /> : <div className="photo-placeholder">No photo</div>}
+                    <div className="photo-label">Person Photo</div>
+                    {r.person_photo_path ? <img onClick={() => setImageModal({ src: r.person_photo_path, alt: 'Person Photo' })} src={r.person_photo_path} alt="person" className="thumb" onLoad={e=>e.currentTarget.classList.add('loaded')} style={{ cursor: 'pointer' }} /> : <div className="photo-placeholder">No photo</div>}
                   </div>
                 </div>
-
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {imageModal && imageModal.src && (
+        <div className="image-modal-overlay" onClick={() => setImageModal({ src: null, alt: '' })}>
+          <div className="image-modal" role="dialog" aria-modal="true" aria-label={imageModal.alt || 'Image preview'} onClick={e => e.stopPropagation()}>
+            <button ref={imageModalCloseRef} className="image-modal-close" onClick={() => setImageModal({ src: null, alt: '' })} aria-label="Close">✕</button>
+            <img src={imageModal.src} alt={imageModal.alt || 'Image'} />
+            <div className="image-modal-caption">{imageModal.alt}</div>
+          </div>
         </div>
       )}
     </div>

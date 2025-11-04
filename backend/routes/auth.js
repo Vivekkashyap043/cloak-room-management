@@ -24,8 +24,10 @@ router.post('/login', async (req, res) => {
     const user = rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
-  const token = jwt.sign({ username: user.username, role: user.role || 'user' }, secret, { expiresIn: '8h' });
-  res.json({ token, role: user.role || 'user', username: user.username });
+  const tokenPayload = { username: user.username, role: user.role || 'user' };
+  if (user.location) tokenPayload.location = user.location;
+  const token = jwt.sign(tokenPayload, secret, { expiresIn: '8h' });
+  res.json({ token, role: user.role || 'user', username: user.username, location: user.location });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

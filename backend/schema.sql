@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(100) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('admin', 'user') DEFAULT 'user',
+  -- location indicates which cloakroom the user operates (gents or ladies)
+  location ENUM('gents location','ladies location') NOT NULL DEFAULT 'gents location',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -19,11 +21,22 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS records (
   id INT AUTO_INCREMENT PRIMARY KEY,
   token_number VARCHAR(100) NOT NULL UNIQUE,
-  person_name VARCHAR(255) NOT NULL,
-  person_photo_path VARCHAR(500) NOT NULL,
-  things_name VARCHAR(255) NOT NULL,
-  things_photo_path VARCHAR(500) NOT NULL,
-  status ENUM('submitted', 'returned') DEFAULT 'submitted',
-  submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  -- location of the record (auto-filled from the authenticated user's location)
+  location VARCHAR(64) NOT NULL,
+  -- things_name removed: items are stored in separate `items` table
+  person_photo_path VARCHAR(500) DEFAULT NULL,
+  status ENUM('deposited', 'returned') DEFAULT 'deposited',
+  deposited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   returned_at DATETIME NULL
+);
+
+-- Items table: each record can have multiple items (name and count). Each item may have an optional photo_path.
+CREATE TABLE IF NOT EXISTS items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  record_id INT NOT NULL,
+  item_name VARCHAR(255) NOT NULL,
+  item_count INT NOT NULL DEFAULT 1,
+  item_photo_path VARCHAR(500) DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (record_id) REFERENCES records(id) ON DELETE CASCADE
 );
