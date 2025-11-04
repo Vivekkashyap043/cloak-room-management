@@ -263,6 +263,12 @@ export default function EntryForm({ token }) {
 
   return (
     <div className="entry-form-inner">
+      {/* Show a helpful banner when the page is not a secure context (HTTPS) so users know why camera may be blocked */}
+      {typeof window !== 'undefined' && !window.isSecureContext && (
+        <div style={{ background: '#fff4e5', border: '1px solid #ffd9b3', padding: 10, marginBottom: 12, borderRadius: 6 }} role="alert">
+          Camera access requires a secure origin (HTTPS). If you're accessing this app via the LAN IP (http://...), the browser will block camera access — open the app via HTTPS (use mkcert) or a tunnel (ngrok/localtunnel) to enable the camera on remote devices.
+        </div>
+      )}
       <form onSubmit={submit} className="entry-grid">
         <div>
           <div className="form-group">
@@ -271,10 +277,15 @@ export default function EntryForm({ token }) {
               <input ref={tokenInputRef} id="token-number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} required className={`large-input ${detectedAnim ? 'token-detected' : ''}`} placeholder="Enter unique token" />
               <button type="button" className="ghost" onClick={() => {
                 console.log('Scan QR clicked')
-                // Always open the QRScanner modal (it has a jsQR fallback) when camera is available
-                const canUseCamera = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+                // prefer getUserMedia if available and the page is a secure context (HTTPS or localhost)
+                const canUseCamera = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
                 if (!canUseCamera) {
-                  setMessage('Camera not available in this browser')
+                  // If getUserMedia isn't available due to insecure origin, give an explicit hint
+                  if (typeof window !== 'undefined' && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    setMessage('Camera access blocked by insecure origin — open the app via HTTPS (or use ngrok)')
+                  } else {
+                    setMessage('Camera not available in this browser')
+                  }
                   return
                 }
                 setShowScanner(true)
@@ -310,13 +321,18 @@ export default function EntryForm({ token }) {
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button type="button" className="ghost" onClick={() => {
-                          // open camera for this item
-                          const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-                          if (!isMobile && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setOpenCameraFor({ type: 'item', idx })
-                          else {
-                            // trigger hidden input by id
+                          // open camera for this item when getUserMedia is available and running in a secure context
+                          const canUseGetUserMedia = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
+                          if (canUseGetUserMedia) {
+                            setOpenCameraFor({ type: 'item', idx })
+                          } else {
+                            // fallback to file input which may open the camera on some mobile browsers
                             const el = document.getElementById(`item-file-${idx}`)
                             if (el) el.click()
+                            // if getUserMedia exists but page is insecure, hint to user
+                            if (typeof window !== 'undefined' && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !window.isSecureContext) {
+                              setMessage('Camera access requires HTTPS. Open the site via HTTPS or use a tunnel (ngrok) to enable the camera.');
+                            }
                           }
                         }}>{it.photoPreview ? 'Retake' : 'Take'}</button>
                         <label className="ghost" style={{ cursor: 'pointer' }}>
@@ -352,9 +368,13 @@ export default function EntryForm({ token }) {
                 </div>
                 <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
                   <button type="button" className="ghost" onClick={() => {
-                    const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-                    if (!isMobile && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setOpenCameraFor('person')
+                    // prefer getUserMedia when available and secure; otherwise fall back to file input
+                    const canUseGetUserMedia = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
+                    if (canUseGetUserMedia) setOpenCameraFor('person')
                     else if (personCamRef.current) personCamRef.current.click()
+                    if (typeof window !== 'undefined' && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !window.isSecureContext) {
+                      setMessage('Camera access requires HTTPS. Open the site via HTTPS or use a tunnel (ngrok) to enable the camera.');
+                    }
                   }} aria-label="Take person photo from camera">{previewPerson ? 'Retake' : 'Take from Camera'}</button>
                   <input
                     ref={personCamRef}

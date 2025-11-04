@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import jsQR from 'jsqr'
+// Note: jsQR is dynamically imported in the fallback path below to avoid bundling it when
+// the native BarcodeDetector API is available. We purposely avoid a static top-level import
+// to keep the initial bundle smaller for devices/browsers that support BarcodeDetector.
 
 export default function QRScanner({ onDetected, onClose }) {
   console.debug('QRScanner render (component body)')
@@ -71,7 +73,8 @@ export default function QRScanner({ onDetected, onClose }) {
         // start loop shortly after video starts
         setTimeout(loop, 300)
       } else {
-        // Fallback to jsQR when BarcodeDetector API isn't available
+        // Fallback to jsQR when BarcodeDetector API isn't available. Import it once and reuse.
+        let jsQRModule = null
         const loop = async () => {
           try {
             if (!videoRef.current) {
@@ -88,7 +91,16 @@ export default function QRScanner({ onDetected, onClose }) {
             const ctx = canvas.getContext('2d')
             ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-            const code = jsQR(imageData.data, imageData.width, imageData.height)
+            // lazy-load jsQR on demand to keep the primary bundle small
+            if (!jsQRModule) {
+              try {
+                const mod = await import('jsqr')
+                jsQRModule = mod.default || mod
+              } catch (impErr) {
+                console.debug('failed to import jsQR', impErr)
+              }
+            }
+            const code = jsQRModule ? jsQRModule(imageData.data, imageData.width, imageData.height) : null
             if (code && code.data) {
               console.debug('QR seen (jsQR):', code.data)
               const prev = lastSeenRef.current

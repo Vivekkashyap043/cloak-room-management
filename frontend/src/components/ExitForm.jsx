@@ -93,6 +93,12 @@ export default function ExitForm({ token }) {
 
   return (
   <div className="entry-form-inner">
+    {/* helpful banner when not served over HTTPS */}
+    {typeof window !== 'undefined' && !window.isSecureContext && (
+      <div style={{ background: '#fff4e5', border: '1px solid #ffd9b3', padding: 10, marginBottom: 12, borderRadius: 6 }} role="alert">
+        Scanner and camera features require a secure origin (HTTPS). If you're opening the app via http://LAN-IP the browser may block camera access — use HTTPS or a tunnel (ngrok/localtunnel) for remote devices.
+      </div>
+    )}
     {showScanner && <QRScanner onDetected={handleQrDetected} onClose={() => setShowScanner(false)} />}
   <div className="exit-search-grid">
   <form onSubmit={findByToken} className="entry-vertical-form">
@@ -100,7 +106,15 @@ export default function ExitForm({ token }) {
           <label htmlFor="exit-token">Find by Token</label>
           <div style={{ display: 'flex', gap: 8 }}>
             <input id="exit-token" ref={tokenRef} className="large-input" placeholder="Enter token number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} />
-            <button type="button" className="ghost" onClick={() => setShowScanner(true)}>Scan QR</button>
+            <button type="button" className="ghost" onClick={() => {
+              const canUseCamera = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
+              if (!canUseCamera) {
+                if (typeof window !== 'undefined' && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setMessage('Camera access blocked: open the app via HTTPS or use a tunnel (ngrok)')
+                else setMessage('Camera not supported in this browser')
+                return
+              }
+              setShowScanner(true)
+            }}>Scan QR</button>
           </div>
         </div>
         <div className="form-actions">

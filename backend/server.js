@@ -1,8 +1,10 @@
-// server.js (drop-in replacement)
+// server.js
 
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -14,59 +16,100 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ensure uploads directory exists
+// Ensure directories exist
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 
-// ensure logs directory exists for audit logging
 const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
 
-// serve uploaded files
+// Serve uploaded files
 app.use('/uploads', express.static(uploadsDir));
 
-// API routes (keep these before the SPA fallback)
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/records', recordsRoutes);
 
-// If frontend build exists, serve it. Otherwise keep a simple JSON root for health check.
-const frontendDist = path.join(__dirname, '..', 'frontend', 'dist'); // adjust if your layout differs
+// Serve frontend build (adjust path if needed)
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 
 if (fs.existsSync(frontendDist)) {
-  // Serve static frontend assets (index.html, assets/*)
   app.use(express.static(frontendDist));
 
-  // SPA fallback: serve index.html for any unknown route that is NOT /api or /uploads
   app.get('*', (req, res, next) => {
     const url = req.path || '';
     if (url.startsWith('/api') || url.startsWith('/uploads')) return next();
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 
-  console.log('Serving frontend from', frontendDist);
+  console.log('✅ Serving frontend from:', frontendDist);
 } else {
-  // helpful root when frontend build is missing
   app.get('/', (req, res) => {
     res.json({ message: 'Cloak room backend running (frontend build not found)' });
   });
-  console.warn('Warning: frontend dist not found at', frontendDist);
+  console.warn('⚠️ Frontend dist not found at', frontendDist);
 }
 
-// error handler for multer and other errors
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error(err && err.message ? err.message : err);
-  if (err && err.message && err.message.includes('Only image files')) {
+  console.error(err?.message || err);
+  if (err?.message?.includes('Only image files')) {
     return res.status(400).json({ message: err.message });
   }
-  if (err && err.code === 'LIMIT_FILE_SIZE') {
-    // Note: server limit is currently 5MB. Client-side compression reduces images before upload when possible.
+  if (err?.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ message: 'File too large. Max size is 5MB.' });
   }
   res.status(500).json({ message: 'Server error' });
 });
 
+// === HTTPS SETUP ===
 const port = process.env.PORT || 4000;
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server listening on port ${port}`);
-});
+const keyPath = path.join(__dirname, 'cert', 'key.pem');
+const certPath = path.join(__dirname, 'cert', 'cert.pem');
+
+if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+  try {
+    const key = fs.readFileSync(keyPath);
+    const cert = fs.readFileSync(certPath);
+    const options = { key, cert };
+
+    // Start HTTPS server
+    https.createServer(options, app).listen(port, '0.0.0.0', () => {
+      const localIP = getLocalIP();
+      console.log('🔒 HTTPS server running at:');
+      console.log(`   👉 https://localhost:${port}`);
+      console.log(`   👉 https://${localIP}:${port}`);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start HTTPS server, falling back to HTTP:', error);
+    startHTTP(app, port);
+  }
+} else {
+  console.warn('⚠️ SSL certificate or key not found. Starting HTTP server only.');
+  startHTTP(app, port);
+}
+
+// === Helper functions ===
+function startHTTP(app, port) {
+  http.createServer(app).listen(port, '0.0.0.0', () => {
+    const localIP = getLocalIP();
+    console.log(`🌐 HTTP server running at:`);
+    console.log(`   👉 http://localhost:${port}`);
+    console.log(`   👉 http://${localIP}:${port}`);
+  });
+}
+
+function getLocalIP() {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
