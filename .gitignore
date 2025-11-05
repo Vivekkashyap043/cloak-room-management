@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 backend/uploads/
+backend/cert/cert.pem
+backend/cert/key.pem
