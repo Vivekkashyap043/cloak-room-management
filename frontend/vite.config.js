@@ -18,16 +18,21 @@ export default defineConfig({
     proxy: {
       // Proxy API requests to backend during development
       '/api': {
-        // include protocol so the proxy correctly resolves the target
-        target: 'https://localhost:4000',
+        // Use HTTP vs HTTPS depending on whether HTTPS is enabled above.
+        // If the backend is running plain HTTP (default), a proxy target with
+        // `https://` will cause TLS handshake errors like "wrong version
+        // number" (EPROTO). We pick the correct protocol automatically to
+        // avoid that.
+        target: (httpsOption ? 'https://localhost:4000' : 'http://localhost:4000'),
         changeOrigin: true,
-        secure: false,
+        // keep secure:false when target is HTTPS with self-signed certs
+        secure: !!httpsOption,
       },
       // Proxy uploaded static files so image URLs like /uploads/... load in the dev server
       '/uploads': {
-        target: 'https://localhost:4000',
+        target: (httpsOption ? 'https://localhost:4000' : 'http://localhost:4000'),
         changeOrigin: true,
-        secure: false,
+        secure: !!httpsOption,
       },
     },
   },

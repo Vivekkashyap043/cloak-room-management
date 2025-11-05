@@ -4,6 +4,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminEvents from './pages/AdminEvents'
+import AdminReport from './pages/AdminReport'
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || null)
@@ -20,7 +22,20 @@ function App() {
         const res = await fetch(`/api/auth/me`, {
           headers: { Authorization: 'Bearer ' + t }
         })
-        if (!res.ok) throw new Error('invalid')
+        if (!res.ok) {
+          // Only clear stored auth if token is invalid (401). For other errors keep token so transient server issues
+          if (res.status === 401) {
+            throw new Error('invalid')
+          } else {
+            console.warn('Auth verify returned non-OK', res.status)
+            const data = await res.json().catch(() => ({}))
+            const payload = data.user || {}
+            setRole(localStorage.getItem('role') || payload.role || 'user')
+            setUsername(localStorage.getItem('username') || payload.username || null)
+            setToken(t)
+            return
+          }
+        }
         const data = await res.json()
         // keep role/username from stored values or payload
         const payload = data.user || {}
@@ -73,6 +88,23 @@ function App() {
             path="/admin"
             element={token && role === 'admin' ? (
               <AdminDashboard token={token} username={username} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )}
+          />
+          <Route
+            path="/admin/events"
+            element={token && role === 'admin' ? (
+              <AdminEvents token={token} username={username} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )}
+          />
+
+          <Route
+            path="/admin/report"
+            element={token && role === 'admin' ? (
+              <AdminReport token={token} username={username} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )}

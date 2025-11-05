@@ -5,6 +5,7 @@ const path = require('path');
 const pool = require('../db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const moment = require('moment-timezone');
+const ExcelJS = require('exceljs');
 
 const router = express.Router();
 
@@ -20,6 +21,65 @@ router.post('/users', authenticate, requireAdmin, async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     await pool.query('INSERT INTO users (username, password_hash, role, location) VALUES (?, ?, ?, ?)', [username, hash, 'user', location]);
     res.json({ message: 'user created', username, location });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Export records as PDF, XLSX, or CSV
+// GET /api/admin/records/export?format=pdf|xlsx|csv&...filters...
+router.get('/records/export', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const fmt = (req.query.format || 'xlsx').toLowerCase();
+    if (fmt !== 'xlsx') return res.status(400).json({ message: 'format must be xlsx' });
+
+    const { where, params } = buildFilters(req.query);
+    let sql = `SELECT r.id as record_id, r.token_number, r.location, r.event_name, r.status, r.deposited_at, r.returned_at, i.id as item_id, i.item_name, i.item_count,
+      e.event_incharge AS event_incharge, e.incharge_phone AS incharge_phone
+      FROM records r
+      LEFT JOIN items i ON i.record_id = r.id
+      LEFT JOIN events e ON e.name = r.event_name AND e.event_location = r.location`;
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`;
+    sql += ' ORDER BY r.deposited_at DESC';
+    // cap export size
+    sql += ' LIMIT 5000';
+    const [rows] = await pool.query(sql, params);
+
+    const map = new Map();
+    for (const r of rows) {
+      const rid = r.record_id;
+      if (!map.has(rid)) {
+    map.set(rid, { id: rid, token_number: r.token_number, event_name: r.event_name || null, event_incharge: r.event_incharge || '', incharge_phone: r.incharge_phone || '', location: r.location, deposited_at: r.deposited_at ? moment.tz(r.deposited_at, 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') : null, returned_at: r.returned_at ? moment.tz(r.returned_at, 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') : null, status: r.status, items: [] });
+      }
+      if (r.item_id) map.get(rid).items.push(`${r.item_name || ''} x${r.item_count || 0}`);
+    }
+    const out = Array.from(map.values());
+
+    if (fmt === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Report');
+      sheet.columns = [
+        { header: 'Token', key: 'token', width: 12 },
+        { header: 'Event', key: 'event', width: 30 },
+        { header: 'In-charge', key: 'incharge', width: 24 },
+        { header: 'In-charge Phone', key: 'incharge_phone', width: 18 },
+        { header: 'Location', key: 'location', width: 20 },
+        { header: 'Deposited At', key: 'deposited', width: 20 },
+        { header: 'Returned At', key: 'returned', width: 20 },
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'Items', key: 'items', width: 80 }
+      ];
+
+      for (const r of out) {
+  sheet.addRow({ token: r.token_number, event: r.event_name || '', incharge: r.event_incharge || '', incharge_phone: r.incharge_phone || '', location: r.location || '', deposited: r.deposited_at || '', returned: r.returned_at || '', status: r.status || '', items: (r.items || []).join('; ') });
+      }
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="report_${Date.now()}.xlsx"`);
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -405,6 +465,139 @@ router.get('/records/preview-filter', authenticate, requireAdmin, async (req, re
   }
 });
 
+// Helper: build WHERE clause and params from query filters
+function buildFilters(q) {
+  const { token, event, location, status, from, to, deposited, returned, returned_from, returned_to } = q || {};
+  const where = [];
+  const params = [];
+
+  function norm(v) {
+    if (!v) return null;
+    if (Array.isArray(v)) return v.map(x => String(x).trim()).filter(Boolean);
+    if (typeof v === 'string') {
+      if (v.indexOf(',') >= 0) return v.split(',').map(x => x.trim()).filter(Boolean);
+      return [v.trim()];
+    }
+    return null;
+  }
+
+  const tokenArr = norm(token);
+  const eventArr = norm(event);
+  const locationArr = norm(location);
+  const statusArr = norm(status);
+
+  if (tokenArr && tokenArr.length) {
+    // token number exact match or multiple
+    where.push('r.token_number IN (?)');
+    params.push(tokenArr);
+  }
+  if (eventArr && eventArr.length) {
+    where.push('r.event_name IN (?)');
+    params.push(eventArr);
+  }
+  if (locationArr && locationArr.length) {
+    where.push('r.location IN (?)');
+    params.push(locationArr);
+  }
+  if (statusArr && statusArr.length) {
+    where.push('r.status IN (?)');
+    params.push(statusArr);
+  }
+
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+  // Deposited: support either a single exact date (deposited) or a range (from/to)
+  let depFrom = null, depTo = null;
+  if (deposited && dateOnly.test(deposited)) {
+    depFrom = `${deposited} 00:00:00`;
+    depTo = `${deposited} 23:59:59`;
+  } else {
+    if (from && dateOnly.test(from)) depFrom = `${from} 00:00:00`;
+    if (to && dateOnly.test(to)) depTo = `${to} 23:59:59`;
+  }
+  if (depFrom && depTo) {
+    where.push('r.deposited_at BETWEEN ? AND ?');
+    params.push(depFrom, depTo);
+  } else if (depFrom) {
+    where.push('r.deposited_at >= ?');
+    params.push(depFrom);
+  } else if (depTo) {
+    where.push('r.deposited_at <= ?');
+    params.push(depTo);
+  }
+
+  // Returned: only single-date filter supported (returned)
+  if (returned && dateOnly.test(returned)) {
+    const rFrom = `${returned} 00:00:00`;
+    const rTo = `${returned} 23:59:59`;
+    where.push('r.returned_at BETWEEN ? AND ?');
+    params.push(rFrom, rTo);
+  } else {
+    // backwards-compatible support for returned_from/returned_to if provided
+    let retFrom = null, retTo = null;
+    if (returned_from && dateOnly.test(returned_from)) retFrom = `${returned_from} 00:00:00`;
+    if (returned_to && dateOnly.test(returned_to)) retTo = `${returned_to} 23:59:59`;
+    if (retFrom && retTo) {
+      where.push('r.returned_at BETWEEN ? AND ?');
+      params.push(retFrom, retTo);
+    } else if (retFrom) {
+      where.push('r.returned_at >= ?');
+      params.push(retFrom);
+    } else if (retTo) {
+      where.push('r.returned_at <= ?');
+      params.push(retTo);
+    }
+  }
+
+  return { where, params };
+}
+
+// GET /api/admin/records/all - return recent records (with items) for admin report
+// Supports filters via query params: token, event, location, status, from, to (deposited range), returned_from, returned_to and optional limit
+router.get('/records/all', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { where, params } = buildFilters(req.query);
+    // Join events table to pull event in-charge info (match by name + location)
+    let sql = `SELECT r.id as record_id, r.token_number, r.location, r.event_name, r.person_photo_path, r.status, r.deposited_at, r.returned_at,
+      i.id as item_id, i.item_name, i.item_count, i.item_photo_path,
+      e.event_incharge AS event_incharge, e.incharge_phone AS incharge_phone
+      FROM records r
+      LEFT JOIN items i ON i.record_id = r.id
+      LEFT JOIN events e ON e.name = r.event_name AND e.event_location = r.location`;
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`;
+    sql += ' ORDER BY r.deposited_at DESC';
+    const limit = parseInt(req.query.limit || '2000', 10) || 2000;
+    sql += ` LIMIT ${limit}`;
+    const [rows] = await pool.query(sql, params);
+    const map = new Map();
+    for (const r of rows) {
+      const rid = r.record_id;
+      if (!map.has(rid)) {
+        map.set(rid, {
+          id: rid,
+          token_number: r.token_number,
+          event_name: r.event_name || null,
+          event_incharge: r.event_incharge || null,
+          incharge_phone: r.incharge_phone || null,
+          location: r.location,
+          person_photo_path: r.person_photo_path || null,
+          status: r.status,
+          deposited_at: r.deposited_at ? moment.tz(r.deposited_at, 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') : null,
+          returned_at: r.returned_at ? moment.tz(r.returned_at, 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') : null,
+          items: []
+        });
+      }
+      if (r.item_id) {
+        map.get(rid).items.push({ id: r.item_id, item_name: r.item_name, item_count: r.item_count, item_photo_path: r.item_photo_path || null });
+      }
+    }
+    const out = Array.from(map.values());
+    res.json({ count: out.length, records: out });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Delete records matching arbitrary filters: event_name, status, from, to
 // DELETE /api/admin/records?event=NAME&status=STATUS&from=YYYY-MM-DD&to=YYYY-MM-DD
 router.delete('/records', authenticate, requireAdmin, async (req, res) => {
@@ -540,13 +733,17 @@ router.delete('/records', authenticate, requireAdmin, async (req, res) => {
 // GET /api/admin/events - list all events
 router.get('/events', authenticate, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, name, description, event_date, created_at FROM events ORDER BY created_at DESC');
+    const [rows] = await pool.query('SELECT id, name, description, event_date, event_status, event_incharge, incharge_phone, event_location, created_at FROM events ORDER BY created_at DESC');
     // convert created_at and event_date to IST/ISO for responses
     const out = rows.map(r => ({
       id: r.id,
       name: r.name,
       description: r.description,
       event_date: r.event_date ? moment.tz(r.event_date, 'Asia/Kolkata').format('YYYY-MM-DD') : null,
+      event_status: r.event_status || 'active',
+      event_incharge: r.event_incharge || null,
+      incharge_phone: r.incharge_phone || null,
+      event_location: r.event_location || null,
       created_at: r.created_at ? moment.tz(r.created_at, 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss') : null
     }));
     res.json({ events: out });
@@ -559,30 +756,64 @@ router.get('/events', authenticate, requireAdmin, async (req, res) => {
 // POST /api/admin/events - create an event { name, description, event_date }
 router.post('/events', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, description, event_date } = req.body || {};
-    if (!name) return res.status(400).json({ message: 'Event name required' });
-    if (!event_date) return res.status(400).json({ message: 'Event date required (YYYY-MM-DD)' });
+    const { name, description, event_date, event_incharge, incharge_phone, event_location, event_status } = req.body || {};
+  if (!name) return res.status(400).json({ message: 'Event name required' });
+  if (!event_date) return res.status(400).json({ message: 'Event date required (YYYY-MM-DD)' });
+  if (!event_incharge) return res.status(400).json({ message: 'Event in-charge name required' });
+  if (!incharge_phone) return res.status(400).json({ message: 'Event in-charge phone required' });
+    // sanitize location default
+    const loc = event_location && ['gents location', 'ladies location'].includes(event_location) ? event_location : 'gents location';
+    const status = event_status && ['active','inactive'].includes(event_status) ? event_status : 'active';
     // validate date format YYYY-MM-DD
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRe.test(event_date)) return res.status(400).json({ message: 'Invalid event_date format; use YYYY-MM-DD' });
-    // simple uniqueness check
-    const [ex] = await pool.query('SELECT id FROM events WHERE name = ? LIMIT 1', [name]);
-    if (ex.length) return res.status(400).json({ message: 'Event already exists' });
-    const [ins] = await pool.query('INSERT INTO events (name, description, event_date) VALUES (?, ?, ?)', [name, description || null, event_date]);
-    res.json({ message: 'event created', id: ins.insertId, name, event_date });
+  // simple uniqueness check — allow same event name in different locations
+  const [ex] = await pool.query('SELECT id FROM events WHERE name = ? AND event_location = ? LIMIT 1', [name, loc]);
+  if (ex.length) return res.status(400).json({ message: 'Event already exists at this location' });
+    // If new event will be active, ensure there is no other active event at same location
+    if (status === 'active') {
+      const [act] = await pool.query('SELECT id FROM events WHERE event_status = ? AND event_location = ? LIMIT 1', ['active', loc]);
+      if (act.length) return res.status(409).json({ message: 'An event at that location already is active' });
+    }
+    const [ins] = await pool.query('INSERT INTO events (name, description, event_date, event_status, event_incharge, incharge_phone, event_location) VALUES (?, ?, ?, ?, ?, ?, ?)', [name, description || null, event_date, status, event_incharge || null, incharge_phone || null, loc]);
+    res.json({ message: 'event created', id: ins.insertId, name, event_date, event_status: status, event_location: loc });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// DELETE /api/admin/events/:name - delete single event by name
-router.delete('/events/:name', authenticate, requireAdmin, async (req, res) => {
+// PATCH /api/admin/events/:id - update event attributes (e.g., set inactive)
+router.patch('/events/:id', authenticate, requireAdmin, async (req, res) => {
   try {
-    const name = req.params.name;
-    const [del] = await pool.query('DELETE FROM events WHERE name = ?', [name]);
+    const id = req.params.id;
+    const { event_status } = req.body || {};
+    if (!event_status || !['active','inactive'].includes(event_status)) return res.status(400).json({ message: 'Provide event_status as "active" or "inactive"' });
+    // If setting to active, ensure no other active event exists at same location
+    if (event_status === 'active') {
+      // find event location first by id
+      const [evs] = await pool.query('SELECT event_location FROM events WHERE id = ? LIMIT 1', [id]);
+      if (!evs.length) return res.status(404).json({ message: 'Event not found' });
+      const loc = evs[0].event_location;
+      const [act] = await pool.query('SELECT id FROM events WHERE event_status = ? AND event_location = ? AND id <> ? LIMIT 1', ['active', loc, id]);
+      if (act.length) return res.status(409).json({ message: 'An event at that location already is active' });
+    }
+    const [upd] = await pool.query('UPDATE events SET event_status = ? WHERE id = ?', [event_status, id]);
+    if (upd.affectedRows === 0) return res.status(404).json({ message: 'Event not found' });
+    res.json({ message: 'event updated', id, event_status });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// DELETE /api/admin/events/:id - delete single event by id
+router.delete('/events/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [del] = await pool.query('DELETE FROM events WHERE id = ?', [id]);
     if (del.affectedRows === 0) return res.status(404).json({ message: 'Event not found' });
-    res.json({ message: 'event deleted', name });
+    res.json({ message: 'event deleted', id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -590,7 +821,7 @@ router.delete('/events/:name', authenticate, requireAdmin, async (req, res) => {
 });
 
 // DELETE /api/admin/events?all=true  -> delete all events
-// or DELETE /api/admin/events with body { names: [...] } -> delete specific events
+// or DELETE /api/admin/events with body { ids: [...] } -> delete specific events by id
 router.delete('/events', authenticate, requireAdmin, async (req, res) => {
   try {
     const all = req.query.all === 'true';
@@ -598,9 +829,9 @@ router.delete('/events', authenticate, requireAdmin, async (req, res) => {
       await pool.query('DELETE FROM events');
       return res.json({ message: 'all events deleted' });
     }
-    const names = (req.body && req.body.names) || [];
-    if (!Array.isArray(names) || names.length === 0) return res.status(400).json({ message: 'Provide names array or set ?all=true' });
-    const [del] = await pool.query('DELETE FROM events WHERE name IN (?)', [names]);
+    const ids = (req.body && req.body.ids) || [];
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'Provide ids array or set ?all=true' });
+    const [del] = await pool.query('DELETE FROM events WHERE id IN (?)', [ids]);
     res.json({ message: 'events deleted', deleted: del.affectedRows });
   } catch (err) {
     console.error(err);

@@ -4,7 +4,7 @@ import UploadIcon from './icons/UploadIcon'
 import './EntryForm.css'
 import Spinner from './icons/Spinner'
 
-export default function EntryForm({ token, eventName }) {
+export default function EntryForm({ token, eventName, hasActiveEvents }) {
   // Entry form requires an event to be selected. We render a helpful prompt when none is selected.
   // Use relative API paths; remove env indirection
   const [tokenNumber, setTokenNumber] = useState('')
@@ -303,7 +303,12 @@ export default function EntryForm({ token, eventName }) {
           Camera access requires a secure origin (HTTPS). If you're accessing this app via the LAN IP (http://...), the browser will block camera access — open the app via HTTPS (use mkcert) or a tunnel (ngrok/localtunnel) to enable the camera on remote devices.
         </div>
       )}
-      {!eventName ? (
+      {/* If the backend returned no active events for this user's location */}
+      {hasActiveEvents === false ? (
+        <div style={{ padding: 18, textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>There is no any active events.</div>
+        </div>
+      ) : !eventName ? (
         <div style={{ padding: 18, textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No event selected</div>
           <div style={{ color: '#555', marginBottom: 12 }}>Please select an event from the selector at the top-right to start a new entry.</div>

@@ -43,9 +43,13 @@ CREATE TABLE IF NOT EXISTS items (
 
 CREATE TABLE IF NOT EXISTS events (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
   description TEXT DEFAULT NULL,
   event_date DATE NOT NULL,
+  event_status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  event_incharge VARCHAR(255) DEFAULT NULL,
+  incharge_phone VARCHAR(64) DEFAULT NULL,
+  event_location ENUM('gents location','ladies location') NOT NULL DEFAULT 'gents location',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

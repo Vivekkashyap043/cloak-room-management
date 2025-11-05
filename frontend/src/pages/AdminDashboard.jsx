@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from 'react-router-dom'
+import AdminReport from './AdminReport'
 import "./AdminDashboard.css";
 
 /**
@@ -55,19 +57,30 @@ export default function AdminDashboard({ token, username, onLogout }) {
   const [newEventName, setNewEventName] = useState('')
   const [newEventDesc, setNewEventDesc] = useState('')
   const [newEventDate, setNewEventDate] = useState('')
-  const [selectedEvents, setSelectedEvents] = useState([])
-
+  const [newEventIncharge, setNewEventIncharge] = useState('')
+  const [newEventPhone, setNewEventPhone] = useState('')
+  const [newEventLocation, setNewEventLocation] = useState('')
+  const [newEventMsg, setNewEventMsg] = useState(null); // { type: 'success'|'error'|'info', text }
+  const navigate = useNavigate()
+  const [showReport, setShowReport] = useState(false)
   useEffect(() => { loadEvents() }, [])
+
+  // auto-dismiss new event inline message
+  useEffect(() => {
+    if (!newEventMsg) return;
+    const id = setTimeout(() => setNewEventMsg(null), 4200);
+    return () => clearTimeout(id);
+  }, [newEventMsg]);
+  const showNewEventMsg = (type, text) => setNewEventMsg({ type, text });
 
   async function loadEvents() {
     setEventsLoading(true)
     try {
-      const res = await fetch('/api/events', { headers: { Authorization: 'Bearer ' + token } })
+      const url = '/api/events'
+      const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Failed to load events')
       setEvents(data.events || [])
-      // clear any selected events when reloading (prevents stale selection)
-      setSelectedEvents([])
     } catch (err) {
       showToast('error', err.message || 'Failed to load events')
     } finally { setEventsLoading(false) }
@@ -75,34 +88,44 @@ export default function AdminDashboard({ token, username, onLogout }) {
 
   async function createEvent(e) {
     e?.preventDefault()
-    if (!newEventName.trim()) return showToast('error', 'Event name required')
+  if (!newEventName.trim()) return showNewEventMsg('error', 'Event name required')
+  if (!newEventDate) return showNewEventMsg('error', 'Event date required')
+  if (!newEventIncharge.trim()) return showNewEventMsg('error', 'In-charge name required')
+  if (!newEventPhone.trim()) return showNewEventMsg('error', 'In-charge phone required')
+  if (!newEventLocation) return showNewEventMsg('error', 'Select a location')
     try {
       const payload = { name: newEventName.trim(), description: newEventDesc.trim() }
       if (newEventDate) payload.event_date = newEventDate
+      if (newEventIncharge) payload.event_incharge = newEventIncharge
+      if (newEventPhone) payload.incharge_phone = newEventPhone
+      if (newEventLocation) payload.event_location = newEventLocation
+      // event_status omitted — server defaults to 'active'
       const res = await fetch('/api/admin/events', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(payload) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Create failed')
-      showToast('success', `Event "${newEventName.trim()}" created`)
+      showNewEventMsg('success', `Event "${newEventName.trim()}" created`)
       setNewEventName(''); setNewEventDesc('')
+      setNewEventDate(''); setNewEventIncharge(''); setNewEventPhone(''); setNewEventLocation('')
       loadEvents()
+    } catch (err) { showNewEventMsg('error', err.message || 'Server error') }
+  }
+
+  async function deleteEvent(id, name) {
+    if (!id) return
+    setConfirmModal({ open: true, type: 'single', payload: { id, name } })
+  }
+
+  async function toggleEventStatus(id, name, desiredStatus) {
+    if (!id) return showToast('error', 'Missing event id')
+    try {
+      const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ event_status: desiredStatus }) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Update failed')
+      showToast('success', `Event "${name || id}" updated`)
+      await loadEvents()
     } catch (err) { showToast('error', err.message || 'Server error') }
   }
 
-  async function deleteEvent(name) {
-    // open confirmation modal for single delete
-    if (!name) return
-    setConfirmModal({ open: true, type: 'single', payload: { name } })
-  }
-
-  async function deleteSelectedEvents() {
-    if (!selectedEvents.length) return showToast('info', 'Select events to delete')
-    setConfirmModal({ open: true, type: 'selected', payload: { names: selectedEvents.slice() } })
-  }
-
-  async function deleteAllEvents() {
-    if (!events || !events.length) return showToast('info', 'No events to delete')
-    setConfirmModal({ open: true, type: 'all', payload: {} })
-  }
 
   // Range preview state
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -367,28 +390,19 @@ export default function AdminDashboard({ token, username, onLogout }) {
     setConfirmModal(m => ({ ...m, working: true }))
     try {
       if (type === 'single') {
+        const id = payload && payload.id
         const name = payload && payload.name
-        if (!name) throw new Error('Missing event name')
-        const res = await fetch(`/api/admin/events/${encodeURIComponent(name)}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
+        if (!id) throw new Error('Missing event id')
+        const res = await fetch(`/api/admin/events/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
         const data = await res.json()
         if (!res.ok) throw new Error(data.message || 'Delete failed')
-        showToast('success', `Event "${name}" deleted`)
-      } else if (type === 'selected') {
-        const names = payload && payload.names ? payload.names : []
-        if (!names.length) throw new Error('No selected events')
-        const res = await fetch(`/api/admin/events`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ names }) })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.message || 'Delete failed')
-        showToast('success', `Deleted ${data.deleted || names.length} events`)
-        setSelectedEvents([])
-      } else if (type === 'all') {
-        const res = await fetch('/api/admin/events?all=true', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.message || 'Delete failed')
-        showToast('success', 'All events deleted')
+        showToast('success', `Event "${name || id}" deleted`)
+      } else {
+        // Other deletion flows (selected/all) are handled on the All Events page
+        showToast('info', 'Bulk deletes are available on the All Events page')
       }
-      // reload and close modal
-      await loadEvents()
+  // reload and close modal
+  await loadEvents()
       setConfirmModal({ open: false, type: null, payload: null, working: false })
     } catch (err) {
       showToast('error', err.message || 'Server error')
@@ -400,6 +414,11 @@ export default function AdminDashboard({ token, username, onLogout }) {
 
   return (
     <div className="adm-root">
+      {toast && (
+        <div className={`floating-toast ${toast.type}`} role="status" aria-live="polite">
+          <div className="toast-text">{toast.text}</div>
+        </div>
+      )}
       <header className="top-header">
         <div className="top-brand">
           <h2 className="brand-title">Admin Dashboard</h2>
@@ -414,6 +433,109 @@ export default function AdminDashboard({ token, username, onLogout }) {
       <div className="adm-container">
         <div className="adm-grid">
           <section className="card left-card">
+
+            <div className="panel">
+              <h3 className="panel-title">Events Management</h3>
+              <form className="form-vertical" onSubmit={createEvent}>
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>Event Name</div>
+                  <input style={{ width: '100%' }} value={newEventName} onChange={e => setNewEventName(e.target.value)} placeholder="Event name" />
+                </label>
+
+                <label style={{ display: 'block', marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>Event Date</div>
+                  <input style={{ width: '100%', padding: '8px 10px' }} type="date" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
+                </label>
+
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>Description</div>
+                  <input style={{ width: '100%' }} value={newEventDesc} onChange={e => setNewEventDesc(e.target.value)} placeholder="Short description (optional)" />
+                </label>
+
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>In-charge</div>
+                  <input style={{ width: '100%' }} value={newEventIncharge} onChange={e => setNewEventIncharge(e.target.value)} placeholder="In-charge name" required />
+                </label>
+
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>In-charge Phone</div>
+                  <input style={{ width: '100%' }} value={newEventPhone} onChange={e => setNewEventPhone(e.target.value)} placeholder="Phone number" required />
+                </label>
+
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>Location</div>
+                  <select value={newEventLocation} onChange={e => setNewEventLocation(e.target.value)} style={{ width: '100%', padding: 8 }}>
+                    <option value="" disabled>-- Select Location --</option>
+                    <option value="gents location">gents location</option>
+                    <option value="ladies location">ladies location</option>
+                  </select>
+                </label>
+
+                {newEventMsg && (
+                  <div style={{ marginTop: 6 }} className={`msg ${newEventMsg.type}`}>
+                    {newEventMsg.text}
+                  </div>
+                )}
+
+                <div className="row-actions">
+                  <button className="btn-primary" type="submit" disabled={eventsLoading || !newEventName || !newEventDate || !newEventIncharge || !newEventPhone}>{eventsLoading ? 'Working...' : 'Create Event'}</button>
+                </div>
+              </form>
+
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0 }}>Active Events</h4>
+                  <div>
+                    <button className="btn-clear" onClick={() => loadEvents()} style={{ marginRight: 8 }}>Refresh</button>
+                      <button className="btn-clear" onClick={() => navigate('/admin/events')} style={{ marginRight: 8 }}>View All Events</button>
+                      <button className="btn-clear" onClick={() => { setShowReport(s => !s); /* also allow navigation via route */ }} style={{ marginRight: 8 }}>{showReport ? 'Hide Report' : 'Show Report'}</button>
+                  </div>
+                </div>
+
+                {eventsLoading ? (
+                  <div className="empty-note">Loading events...</div>
+                ) : events && events.length ? (
+                  <div className="events-card-list">
+                    {events.map(ev => (
+                        <div key={ev.id} className="event-card">
+                          <div className="event-card-main">
+                            <div className="event-name">{ev.name}</div>
+                          </div>
+                          <div className="event-meta">
+                            <div className="event-date">{ev.event_date || '-'}</div>
+                            <div className="event-location">{ev.event_location || '-'}</div>
+                          </div>
+                          <div className="event-actions">
+                            {ev.event_status === 'active' && (
+                              <button className="btn-end" onClick={() => toggleEventStatus(ev.id, ev.name, 'inactive')}>End the Event</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="empty-note">No active events.</div>
+                )}
+              </div>
+              {/* New Report section below Events Management */}
+              <div style={{ marginTop: 18 }} className="panel">
+                <h3 className="panel-title">Report</h3>
+                <p className="small">Generate a comprehensive report of recent records including items and photos. Click View Report to open the full report page.</p>
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn-primary" onClick={() => navigate('/admin/report')}>View Report</button>
+                </div>
+              </div>
+              {/* Inline admin report panel (toggleable) */}
+              {showReport && (
+                <div style={{ marginTop: 16 }}>
+                  <AdminReport token={token} username={username} onLogout={onLogout} />
+                </div>
+              )}
+            </div>
+
+          </section>
+
+          <aside className="card right-card">
             <h2 className="card-heading">User Management</h2>
             <div className="panel">
               <h3 className="panel-title">Add New User</h3>
@@ -434,94 +556,6 @@ export default function AdminDashboard({ token, username, onLogout }) {
                   <button className="btn-primary" type="submit" disabled={creating}>{creating ? "Creating..." : "Add User"}</button>
                 </div>
               </form>
-            </div>
-
-            <hr className="divider" />
-
-            <div className="panel">
-              <h3 className="panel-title">Events Management</h3>
-              <form className="form-vertical" onSubmit={createEvent}>
-                <label style={{ display: 'block', marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, marginBottom: 6 }}>Event Name</div>
-                  <input style={{ width: '100%' }} value={newEventName} onChange={e => setNewEventName(e.target.value)} placeholder="Event name" />
-                </label>
-
-                <label style={{ display: 'block', marginBottom: 10 }}>
-                  <div style={{ fontSize: 13, marginBottom: 6 }}>Event Date</div>
-                  <input style={{ width: '100%', padding: '8px 10px' }} type="date" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} />
-                </label>
-
-                <label style={{ display: 'block', marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, marginBottom: 6 }}>Description</div>
-                  <input style={{ width: '100%' }} value={newEventDesc} onChange={e => setNewEventDesc(e.target.value)} placeholder="Short description (optional)" />
-                </label>
-
-                <div className="row-actions">
-                  <button className="btn-primary" type="submit" disabled={eventsLoading}>{eventsLoading ? 'Working...' : 'Create Event'}</button>
-                </div>
-              </form>
-
-              <div style={{ marginTop: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0 }}>Existing Events</h4>
-                  <div>
-                    <button className="btn-clear" onClick={loadEvents} style={{ marginRight: 8 }}>Refresh</button>
-                    {/* Swapped: show Delete ALL here instead of Delete Selected */}
-                    <button className="btn-danger" onClick={deleteAllEvents} style={{ marginLeft: 8 }} disabled={!(events && events.length)}>Delete ALL Events</button>
-                  </div>
-                </div>
-
-                {eventsLoading ? (
-                  <div className="empty-note">Loading events...</div>
-                ) : events && events.length ? (
-                  <table className="events-table">
-                    <thead>
-                      <tr>
-                        <th></th>
-                        <th>Name</th>
-                        <th>Description</th>
-                        <th>Date</th>
-                        <th>Created</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {events.map(ev => (
-                        <tr key={ev.name}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={selectedEvents.includes(ev.name)}
-                              onChange={e => {
-                                const next = e.target.checked
-                                  ? [...selectedEvents, ev.name]
-                                  : selectedEvents.filter(x => x !== ev.name);
-                                setSelectedEvents(next);
-                              }}
-                            />
-                          </td>
-                          <td>{ev.name}</td>
-                          <td>{ev.description || '-'}</td>
-                          <td>{ev.event_date || '-'}</td>
-                          <td>{ev.created_at || '-'}</td>
-                          <td>
-                            <button className="delete-btn" onClick={() => deleteEvent(ev.name)}>
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="empty-note">No events defined.</div>
-                )}
-
-                <div style={{ marginTop: 10 }}>
-                  {/* Moved Delete Selected here (swapped positions) */}
-                  <button className="btn-danger" onClick={deleteSelectedEvents} disabled={!(selectedEvents && selectedEvents.length)}>Delete Selected</button>
-                </div>
-              </div>
             </div>
 
             <hr className="divider" />
@@ -559,9 +593,9 @@ export default function AdminDashboard({ token, username, onLogout }) {
               )}
 
             </div>
-          </section>
 
-          <aside className="card right-card">
+            <hr className="divider" />
+
             <div className="db-inner">
               <div className="db-white-head"><h3>Database Management</h3></div>
 

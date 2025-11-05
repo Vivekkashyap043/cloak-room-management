@@ -18,6 +18,8 @@ export default function ExitForm({ token, eventName }) {
     e && e.preventDefault()
     setMessage('')
     setMessageType('')
+    // clear previous result while we lookup a new token
+    setResult(null)
     try {
   const qs = eventName ? `?event=${encodeURIComponent(eventName)}` : ''
   const res = await fetch(`/api/records/token/${encodeURIComponent(tokenNumber)}${qs}`, {
@@ -27,6 +29,8 @@ export default function ExitForm({ token, eventName }) {
       try {
         data = await res.json()
       } catch (parseErr) {
+        // clear any previous result when parsing/response fails
+        setResult(null)
         if (!res.ok) {
           setMessage(res.statusText || 'Not found')
           setMessageType('error')
@@ -37,6 +41,7 @@ export default function ExitForm({ token, eventName }) {
         return
       }
       if (!res.ok) {
+        setResult(null)
         setMessage(data.message || 'Not found')
         setMessageType('error')
         return
@@ -57,6 +62,7 @@ export default function ExitForm({ token, eventName }) {
         }
       }
     } catch (err) {
+      setResult(null)
       setMessage('Server error')
       setMessageType('error')
     }
