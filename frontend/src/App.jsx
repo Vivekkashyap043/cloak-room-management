@@ -9,6 +9,7 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || null)
   const [role, setRole] = useState(localStorage.getItem('role') || null)
   const [username, setUsername] = useState(localStorage.getItem('username') || null)
+  const [location, setLocation] = useState(localStorage.getItem('location') || null)
 
   // verify token on app start — if invalid, clear stored auth so Login is shown
   useEffect(() => {
@@ -39,22 +40,26 @@ function App() {
     verify()
   }, [])
 
-  function handleLogin(tokenVal, roleVal, usernameVal) {
+  function handleLogin(tokenVal, roleVal, usernameVal, locationVal) {
     localStorage.setItem('token', tokenVal)
     localStorage.setItem('role', roleVal)
     localStorage.setItem('username', usernameVal || '')
+    if (locationVal) localStorage.setItem('location', locationVal)
     setToken(tokenVal)
     setRole(roleVal)
     setUsername(usernameVal)
+    setLocation(locationVal || null)
   }
 
   function handleLogout() {
     localStorage.removeItem('token')
     localStorage.removeItem('role')
     localStorage.removeItem('username')
+    localStorage.removeItem('location')
     setToken(null)
     setRole(null)
     setUsername(null)
+    setLocation(null)
   }
 
 
@@ -76,7 +81,7 @@ function App() {
           <Route
             path="/dashboard"
             element={token ? (
-              <Dashboard token={token} role={role} username={username} onLogout={handleLogout} />
+              <Dashboard token={token} role={role} username={username} location={location} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )}

@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react'
 import './ExitForm.css'
-import QRScanner from './QRScanner'
 import Spinner from './icons/Spinner'
 
-export default function ExitForm({ token }) {
+export default function ExitForm({ token, eventName }) {
   // Use relative paths so dev proxy or same-origin works
   const [tokenNumber, setTokenNumber] = useState('')
   const [result, setResult] = useState(null)
   const [message, setMessage] = useState('')
-  const [showScanner, setShowScanner] = useState(false)
+  const [messageType, setMessageType] = useState('') // 'success' | 'error' | ''
+  // scanner removed — QR scanning not used in exit form
   const [imageModal, setImageModal] = useState({ src: null, alt: '' })
   const imageModalCloseRef = useRef(null)
 
@@ -17,28 +17,48 @@ export default function ExitForm({ token }) {
   async function findByToken(e) {
     e && e.preventDefault()
     setMessage('')
+    setMessageType('')
     try {
-  const res = await fetch(`/api/records/token/${encodeURIComponent(tokenNumber)}`, {
+  const qs = eventName ? `?event=${encodeURIComponent(eventName)}` : ''
+  const res = await fetch(`/api/records/token/${encodeURIComponent(tokenNumber)}${qs}`, {
         headers: { Authorization: 'Bearer ' + token }
       })
       let data
       try {
         data = await res.json()
       } catch (parseErr) {
-        if (!res.ok) return setMessage(res.statusText || 'Not found')
-        return setMessage('Unexpected response from server')
+        if (!res.ok) {
+          setMessage(res.statusText || 'Not found')
+          setMessageType('error')
+          return
+        }
+        setMessage('Unexpected response from server')
+        setMessageType('error')
+        return
       }
-      if (!res.ok) return setMessage(data.message || 'Not found')
-      // Show record if found; provide clearer messages for non-deposited statuses
-      if (data && String(data.status).toLowerCase() === 'deposited') {
+      if (!res.ok) {
+        setMessage(data.message || 'Not found')
+        setMessageType('error')
+        return
+      }
+      // Show record if found. If status is 'returned' we still display the record
+      // but show an informational/error message and disable the Return button.
+      if (data) {
         setResult([data])
-      } else if (data && String(data.status).toLowerCase() === 'returned') {
-        setMessage('Item already returned')
-      } else {
-        setMessage(data.message || `Record status: ${data.status || 'unknown'}`)
+        if (String(data.status).toLowerCase() === 'deposited') {
+          setMessage('')
+          setMessageType('')
+        } else if (String(data.status).toLowerCase() === 'returned') {
+          setMessage(`Item is already returned`)
+          setMessageType('error')
+        } else {
+          setMessage(data.message || `Record status: ${data.status || 'unknown'}`)
+          setMessageType('error')
+        }
       }
     } catch (err) {
       setMessage('Server error')
+      setMessageType('error')
     }
   }
 
@@ -46,18 +66,28 @@ export default function ExitForm({ token }) {
 
   async function exitRecord(r) {
     setMessage('')
+    setMessageType('')
     try {
+  // Prevent attempting to return an item that's already returned
+  if (r && String(r.status).toLowerCase() !== 'deposited') {
+    setMessage(`Item is already returned`)
+    setMessageType('error')
+    return
+  }
   const res = await fetch(`/api/records/exit/${encodeURIComponent(r.token_number)}`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + token }
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ event_name: eventName })
       })
       const data = await res.json()
   if (!res.ok) return setMessage(data.message || 'Failed')
-  setMessage('Returned: ' + r.token_number)
+  setMessage(`Item returned with token number ${r.token_number}`)
+  setMessageType('success')
   // remove the returned record from the displayed results (we only show deposited records)
       setResult(prev => prev ? prev.filter(x => x.token_number !== r.token_number) : [])
     } catch (err) {
       setMessage('Server error')
+      setMessageType('error')
     }
   }
 
@@ -88,7 +118,6 @@ export default function ExitForm({ token }) {
   function handleQrDetected(result) {
     if (!result) return
     setTokenNumber(String(result).trim())
-    setShowScanner(false)
   }
 
   return (
@@ -99,31 +128,19 @@ export default function ExitForm({ token }) {
         Scanner and camera features require a secure origin (HTTPS). If you're opening the app via http://LAN-IP the browser may block camera access — use HTTPS or a tunnel (ngrok/localtunnel) for remote devices.
       </div>
     )}
-    {showScanner && <QRScanner onDetected={handleQrDetected} onClose={() => setShowScanner(false)} />}
+  {/* QR scanner removed */}
   <div className="exit-search-grid">
-  <form onSubmit={findByToken} className="entry-vertical-form">
-        <div className="form-group">
-          <label htmlFor="exit-token">Find by Token</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input id="exit-token" ref={tokenRef} className="large-input" placeholder="Enter token number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} />
-            <button type="button" className="ghost" onClick={() => {
-              const canUseCamera = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
-              if (!canUseCamera) {
-                if (typeof window !== 'undefined' && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) setMessage('Camera access blocked: open the app via HTTPS or use a tunnel (ngrok)')
-                else setMessage('Camera not supported in this browser')
-                return
-              }
-              setShowScanner(true)
-            }}>Scan QR</button>
-          </div>
+    <form onSubmit={findByToken} className="entry-vertical-form exit-inline-form">
+      <div className="form-group" style={{ flex: 1 }}>
+        <div style={{ display: 'flex', gap: 8, width: '100%', alignItems: 'center' }}>
+          <input id="exit-token" ref={tokenRef} className="large-input" placeholder="Enter token number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} style={{ flex: 1 }} />
+          <button className="primary big" type="submit" aria-label="Find by token" disabled={!tokenNumber.trim()}>GET</button>
         </div>
-        <div className="form-actions">
-          <button className="primary big" type="submit" aria-label="Find by token" disabled={!tokenNumber.trim()}>Find by Token</button>
-        </div>
-  </form>
+      </div>
+    </form>
   </div>
 
-      {message && <div className="message">{message}</div>}
+  {message && <div className={`message ${messageType}`}>{message}</div>}
 
       {result && result.length > 0 && (
         <div className="result-card card">
@@ -158,18 +175,22 @@ export default function ExitForm({ token }) {
                         </div>
                       ))
                     ) : (
-                      <div className="muted">No items recorded</div>
+                      <div className="muted">No items recorded</div> 
                     )}
                   </div>
                 </div>
 
                 <div style={{ marginTop: 20, textAlign: 'center' }}>
-                  <button className="primary big" onClick={() => exitRecord(r)}>{'Return Item'}</button>
+                  {String(r.status).toLowerCase() === 'deposited' ? (
+                    <button className="primary big" onClick={() => exitRecord(r)}>{'Return Item'}</button>
+                  ) : (
+                    <button className="primary big" disabled>{'Returned'}</button>
+                  )}
                 </div>
               </div>
 
               <div>
-                <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 12}}>
                   <div className="photo-box">
                     <div className="photo-label">Person Photo</div>
                     {r.person_photo_path ? <img onClick={() => setImageModal({ src: r.person_photo_path, alt: 'Person Photo' })} src={r.person_photo_path} alt="person" className="thumb" onLoad={e=>e.currentTarget.classList.add('loaded')} style={{ cursor: 'pointer' }} /> : <div className="photo-placeholder">No photo</div>}

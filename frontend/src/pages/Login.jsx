@@ -24,6 +24,8 @@ export default function Login({ onLogin }) {
             // persist username as well
             onLogin(data.token, data.role, data.username)
             // navigate to the appropriate area
+            // pass location (if present) to the app so dashboards can display it
+            onLogin(data.token, data.role, data.username, data.location)
             if (data.role === 'admin') navigate('/admin')
             else navigate('/dashboard')
         } catch (err) {

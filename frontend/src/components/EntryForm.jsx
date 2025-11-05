@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
 import CameraCapture from './CameraCapture'
-import QRScanner from './QRScanner'
 import UploadIcon from './icons/UploadIcon'
 import './EntryForm.css'
 import Spinner from './icons/Spinner'
 
-export default function EntryForm({ token }) {
+export default function EntryForm({ token, eventName }) {
+  // Entry form requires an event to be selected. We render a helpful prompt when none is selected.
   // Use relative API paths; remove env indirection
   const [tokenNumber, setTokenNumber] = useState('')
   // thingsName removed (items table used). Default record status is 'deposited'.
@@ -19,10 +19,13 @@ export default function EntryForm({ token }) {
     { name: 'Key', selected: false, count: 0, photoFile: null, photoPreview: null }
   ])
   const [customItemName, setCustomItemName] = useState('')
-  const [showScanner, setShowScanner] = useState(false)
-  useEffect(() => { console.debug('EntryForm showScanner ->', showScanner) }, [showScanner])
+  // scanner removed — QR scanning not used in entry form
   const [message, setMessage] = useState('')
   const [success, setSuccess] = useState('')
+  // Inline field-specific errors for precise placement
+  const [tokenError, setTokenError] = useState('')
+  const [itemError, setItemError] = useState('')
+  const [photoError, setPhotoError] = useState('')
   const [detectedAnim, setDetectedAnim] = useState(false)
   // toasts removed — use inline messages via setMessage / setSuccess
   const [loading, setLoading] = useState(false)
@@ -148,10 +151,14 @@ export default function EntryForm({ token }) {
 
   async function submit(e) {
     e.preventDefault()
-    setMessage('')
-    if (!tokenNumber) return setMessage('Token number required')
-    // require person photo
-    if (!personPhoto) return setMessage('Person photo is required')
+  // clear previous field errors
+  setMessage('')
+  setTokenError('')
+  setItemError('')
+  setPhotoError('')
+  if (!tokenNumber) return setTokenError('Token number required')
+  // require person photo
+  if (!personPhoto) return setPhotoError('Person photo is required')
 
     // build items payload from selected items (count > 0) and include custom if provided
   const chosenItems = []
@@ -166,11 +173,12 @@ export default function EntryForm({ token }) {
       // custom item added to list and included
       chosenItems.push({ name: customItemName.trim(), count: 1 })
     }
-    if (!chosenItems.length) return setMessage('Select at least one item')
+  if (!chosenItems.length) return setItemError('Select at least one item')
 
     const form = new FormData()
     form.append('token_number', tokenNumber)
-    form.append('status', status)
+  form.append('status', status)
+  form.append('event_name', eventName || '')
     form.append('items', JSON.stringify(chosenItems))
   if (personPhoto) form.append('person_photo', personPhoto)
     // append per-item photos in same order as chosenItems; backend maps by order
@@ -184,10 +192,19 @@ export default function EntryForm({ token }) {
         body: form
       })
       const data = await res.json()
-  if (!res.ok) return setMessage(data.message || 'Failed to save entry')
+  if (!res.ok) {
+        // field-specific backend errors
+        if (res.status === 409) return setTokenError(data.message || 'Token already deposited at this location')
+        // event missing error handling
+        if (res.status === 400 && data && data.message && data.message.toLowerCase().includes('event')) return setMessage(data.message)
+        return setMessage(data.message || 'Failed to save entry')
+      }
   const successText = 'Entry deposited successfully!'
       setSuccess(successText)
-      setMessage('')
+  setMessage('')
+  setTokenError('')
+  setItemError('')
+  setPhotoError('')
       setTokenNumber('')
       // revoke object URLs we created for previews
       try { if (personPreviewRef.current) { URL.revokeObjectURL(personPreviewRef.current); personPreviewRef.current = null } } catch (e) {}
@@ -224,6 +241,23 @@ export default function EntryForm({ token }) {
     const t = setTimeout(() => setMessage(''), 2000)
     return () => clearTimeout(t)
   }, [message])
+
+  // auto-clear inline field errors after 3 seconds
+  useEffect(() => {
+    if (!tokenError) return
+    const t = setTimeout(() => setTokenError(''), 3000)
+    return () => clearTimeout(t)
+  }, [tokenError])
+  useEffect(() => {
+    if (!itemError) return
+    const t = setTimeout(() => setItemError(''), 3000)
+    return () => clearTimeout(t)
+  }, [itemError])
+  useEffect(() => {
+    if (!photoError) return
+    const t = setTimeout(() => setPhotoError(''), 3000)
+    return () => clearTimeout(t)
+  }, [photoError])
 
   // Play a short beep using WebAudio and provide visual focus/animation feedback
   function playBeep() {
@@ -269,27 +303,19 @@ export default function EntryForm({ token }) {
           Camera access requires a secure origin (HTTPS). If you're accessing this app via the LAN IP (http://...), the browser will block camera access — open the app via HTTPS (use mkcert) or a tunnel (ngrok/localtunnel) to enable the camera on remote devices.
         </div>
       )}
-      <form onSubmit={submit} className="entry-grid">
+      {!eventName ? (
+        <div style={{ padding: 18, textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No event selected</div>
+          <div style={{ color: '#555', marginBottom: 12 }}>Please select an event from the selector at the top-right to start a new entry.</div>
+          <div style={{ fontSize: 13, color: '#666' }}>Once an event is selected, the form fields to enter token, items and photos will appear. Your selection will be remembered for the next entry until you change it.</div>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="entry-grid">
         <div>
           <div className="form-group">
             <label htmlFor="token-number">Token Number</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input ref={tokenInputRef} id="token-number" value={tokenNumber} onChange={e => setTokenNumber(e.target.value)} required className={`large-input ${detectedAnim ? 'token-detected' : ''}`} placeholder="Enter unique token" />
-              <button type="button" className="ghost" onClick={() => {
-                console.log('Scan QR clicked')
-                // prefer getUserMedia if available and the page is a secure context (HTTPS or localhost)
-                const canUseCamera = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
-                if (!canUseCamera) {
-                  // If getUserMedia isn't available due to insecure origin, give an explicit hint
-                  if (typeof window !== 'undefined' && navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    setMessage('Camera access blocked by insecure origin — open the app via HTTPS (or use ngrok)')
-                  } else {
-                    setMessage('Camera not available in this browser')
-                  }
-                  return
-                }
-                setShowScanner(true)
-              }}>Scan QR</button>
             </div>
           </div>
 
@@ -320,7 +346,12 @@ export default function EntryForm({ token }) {
                         {it.photoPreview ? <img src={it.photoPreview} alt="item" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6 }} /> : <div style={{ fontSize: 20 }}>📦</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button type="button" className="ghost" onClick={() => {
+                        <button type="button" className="ghost" disabled={!it.selected} onClick={() => {
+                          // If item isn't selected, prevent opening camera and show hint
+                          if (!it.selected) {
+                            setMessage('Select the item to enable Take/Upload')
+                            return
+                          }
                           // open camera for this item when getUserMedia is available and running in a secure context
                           const canUseGetUserMedia = typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext
                           if (canUseGetUserMedia) {
@@ -335,9 +366,9 @@ export default function EntryForm({ token }) {
                             }
                           }
                         }}>{it.photoPreview ? 'Retake' : 'Take'}</button>
-                        <label className="ghost" style={{ cursor: 'pointer' }}>
+                        <label className={`ghost ${!it.selected ? 'disabled-control' : ''}`} style={{ cursor: it.selected ? 'pointer' : 'not-allowed' }} aria-disabled={!it.selected}>
                           Upload
-                          <input id={`item-file-${idx}`} type="file" accept="image/*;capture=camera" capture="environment" style={{ display: 'none' }} onChange={e => handleItemFile(e, idx)} />
+                          <input id={`item-file-${idx}`} type="file" accept="image/*;capture=camera" capture="environment" style={{ display: 'none' }} onChange={e => handleItemFile(e, idx)} disabled={!it.selected} />
                         </label>
                       </div>
                     </div>
@@ -353,6 +384,10 @@ export default function EntryForm({ token }) {
                   setCustomItemName('')
                 }}>Add</button>
               </div>
+              {/* inline token error */}
+              {tokenError && <div className="field-error" role="alert">{tokenError}</div>}
+              {/* item selection error (centered under items list) */}
+              {itemError && <div className="centered-error" role="alert">{itemError}</div>}
             </div>
           </div>
           {success && <div className="success-badge-left" role="status">{success}</div>}
@@ -389,6 +424,8 @@ export default function EntryForm({ token }) {
                     <input type="file" accept="image/*" onChange={e => handleFile(e, setPersonPhoto, setPreviewPerson)} style={{ display: 'none' }} />
                   </label>
                 </div>
+                {/* person photo error placed directly under the photo box controls */}
+                {photoError && <div className="field-error" role="alert" style={{ marginTop: 8 }}>{photoError}</div>}
               </div>
             </div>
 
@@ -396,8 +433,9 @@ export default function EntryForm({ token }) {
             <button type="submit" className="primary big" aria-label="Submit Entry" disabled={loading}>{loading ? <><Spinner size={16} /> Saving...</> : 'Submit Entry'}</button>
           </div>
         </div>
-      </form>
-      {message && <div className="message">{message}</div>}
+  </form>
+  )}
+  {message && <div className="message">{message}</div>}
       {openCameraFor && (
         <CameraCapture
           onClose={() => setOpenCameraFor(null)}
@@ -476,36 +514,7 @@ export default function EntryForm({ token }) {
           }}
         />
       )}
-      {showScanner && (
-        // debug overlay: show immediately so user sees feedback even if camera access fails
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }}>
-          <div style={{ background: '#fff', padding: 12, borderRadius: 8, width: 320, textAlign: 'center' }}>
-            <div style={{ marginBottom: 10 }}><strong>Opening scanner…</strong></div>
-            <div style={{ marginBottom: 8 }}>If the camera permission prompt doesn't appear, check your browser permissions and that the site is served over HTTPS or localhost.</div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
-              <button className="ghost" onClick={() => setShowScanner(false)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showScanner && (
-        <QRScanner
-          onClose={() => setShowScanner(false)}
-          onDetected={value => {
-            // populate token number when QR detected
-            if (value) {
-              setTokenNumber(value)
-              setSuccess('QR detected')
-              try { triggerDetectionFeedback() } catch (e) {}
-              // only close the scanner if we actually detected a non-empty value
-              setShowScanner(false)
-            } else {
-              // if detector emitted an empty/falsey value, keep scanner open and log for debugging
-              console.debug('QRScanner reported empty value')
-            }
-          }}
-        />
-      )}
+      
     </div>
   )
 }

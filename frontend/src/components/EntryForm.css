@@ -33,7 +33,7 @@
 .photo-box .photo-label { color: var(--muted); font-weight:700; margin-bottom:12px; font-size:0.98rem }
 .photo-placeholder {
   width: 100%;
-  max-width: 220px;
+  max-width: 360px; /* increased width to match exit tab; keeps same height via aspect-ratio */
   aspect-ratio: 4 / 3;
   background:#f3f4f6;
   border-radius:10px;
@@ -50,6 +50,29 @@
 
 /* Success badge positioned on the left empty area */
 .success-badge-left { margin-top: 12px; display: inline-block; background: #16a34a; color: #fff; padding: 8px 14px; border-radius: 8px;}
+
+/* Inline field error (placed directly beneath inputs or controls) */
+.field-error {
+  color: #b00020; /* accessible red */
+  background: rgba(176,0,32,0.04);
+  border: 1px solid rgba(176,0,32,0.08);
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-top: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* Centered error useful for item-level errors under the whole items list */
+.centered-error {
+  color: #b00020;
+  text-align: center;
+  margin-top: 10px;
+  font-weight: 700;
+}
+
+/* Make success badge centered instead of left-aligned so item-added messages appear centered */
+.success-badge-left { display: block; margin: 12px auto 0; }
 
 /* Entry/Exit two-column grid and inner form rules moved from App.css */
 .entry-form-inner { padding: 0; background: transparent }
@@ -80,9 +103,9 @@
   box-shadow: 0 8px 18px rgba(37,99,235,0.04);
 }
 
-.entry-grid .ghost:hover { transform: translateY(-2px); }
+.entry-grid .ghost:not(.disabled-control):not([disabled]):hover { transform: translateY(-2px); }
 
-.entry-grid .thumb { width: 140px; height: 140px; border-radius: 10px }
+.entry-grid .thumb { width: 360px; height: 270px; border-radius: 10px }
 
 @media (max-width:980px){
   .entry-grid{ grid-template-columns: 1fr; }
@@ -112,6 +135,21 @@
 
 /* Improve focus visibility for file inputs (labels styled as buttons) */
 .entry-grid label.ghost:focus-within { box-shadow: 0 8px 24px rgba(37,99,235,0.10); }
+
+/* Visual style for disabled Take/Upload label */
+.disabled-control { opacity: 0.5; /* keep visually dimmed */ pointer-events: auto; }
+.disabled-control:hover { cursor: not-allowed; }
+
+/* Disabled state for ghost buttons (actual button elements) */
+.entry-grid .ghost[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.entry-grid .ghost[disabled]:focus {
+  outline: none;
+}
 
 /* Ensure sufficient contrast on labels and small text */
 .entry-grid .form-group label { color: #334155; }

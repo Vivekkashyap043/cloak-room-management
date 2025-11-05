@@ -19,13 +19,13 @@ export default defineConfig({
       // Proxy API requests to backend during development
       '/api': {
         // include protocol so the proxy correctly resolves the target
-        target: 'http://localhost:4000',
+        target: 'https://localhost:4000',
         changeOrigin: true,
         secure: false,
       },
       // Proxy uploaded static files so image URLs like /uploads/... load in the dev server
       '/uploads': {
-        target: 'http://localhost:4000',
+        target: 'https://localhost:4000',
         changeOrigin: true,
         secure: false,
       },

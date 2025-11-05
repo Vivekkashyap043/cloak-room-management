@@ -27,6 +27,7 @@ export default function AdminDashboard({ token, username, onLogout }) {
   const [deleteMsg, setDeleteMsg] = useState(null); // { type, text }
 
   // database deletion controls
+  // database deletion controls
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [deletingRange, setDeletingRange] = useState(false);
@@ -48,6 +49,8 @@ export default function AdminDashboard({ token, username, onLogout }) {
   }, [newUserMsg]);
   const showNewUserMsg = (type, text) => setNewUserMsg({ type, text });
   const showDeleteMsg = (type, text) => setDeleteMsg({ type, text });
+
+  // Permanent purge preview state (removed - using filter-based deletes)
 
   // Events management state
   const [events, setEvents] = useState([])
@@ -109,35 +112,26 @@ export default function AdminDashboard({ token, username, onLogout }) {
   const [previewRows, setPreviewRows] = useState([]);
   const [previewCount, setPreviewCount] = useState(0);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  // Confirmation for delete-by-filters (no preview)
-  const [showDeleteRangeConfirm, setShowDeleteRangeConfirm] = useState(false);
   // filter-based deletion state
   const [filterEvent, setFilterEvent] = useState([]);
   const [filterStatus, setFilterStatus] = useState([]);
   const [filterLocation, setFilterLocation] = useState([]);
 
-  // Robust MultiSelectDropdown — fixed: dropdown no longer closes when user clicks checkboxes
+  // Simple reusable dropdown with checkboxes for multi-select UX (replaces native <select multiple>)
   function MultiSelectDropdown({ options = [], selected = [], onChange, placeholder = 'Select', label }) {
     const [open, setOpen] = useState(false);
-    const rootRef = useRef(null);
+    const ref = useRef(null);
 
-    // Close when clicking outside — use composedPath for robustness
+    // Attach a mousedown listener to the document and close only when the
+    // event target is outside this component. This simpler contains-based
+    // check avoids issues where checkbox clicks inadvertently close the panel.
     useEffect(() => {
-      function onDocPointer(e) {
-        try {
-          const path = (e.composedPath && e.composedPath()) || (e.path || []);
-          if (!rootRef.current) return;
-          // if any element in path is inside our component, don't close
-          if (path && path.length && path.indexOf(rootRef.current) >= 0) return;
-          if (rootRef.current.contains(e.target)) return;
-          setOpen(false);
-        } catch (err) {
-          if (!rootRef.current) return;
-          if (!rootRef.current.contains(e.target)) setOpen(false);
-        }
+      function handleClickOutside(e) {
+        if (!ref.current) return;
+        if (!ref.current.contains(e.target)) setOpen(false);
       }
-      document.addEventListener('pointerdown', onDocPointer);
-      return () => document.removeEventListener('pointerdown', onDocPointer);
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const toggleVal = (val) => {
@@ -148,64 +142,28 @@ export default function AdminDashboard({ token, username, onLogout }) {
       onChange(next);
     };
 
-    // Keep display minimal and ellipsized; full list shown in title attribute
-    const display = (selected && selected.length)
-      ? `${selected[0]}${selected.length > 1 ? ' ...' : ''}`
-      : placeholder;
+    const display = (selected && selected.length) ? `${selected.join(', ')}` : placeholder;
 
     return (
-      <div className="msd-root" ref={rootRef} style={{ position: 'relative' }}>
+      <div className="msd-root" ref={ref} style={{ position: 'relative' }}>
         {label && <div style={{ fontSize: 13, marginBottom: 6 }}>{label}</div>}
-        <button
-          type="button"
-          className="msd-button"
-          onClick={(e) => { e.preventDefault(); setOpen(s => !s); }}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-        >
-          <span className="msd-button-text" title={(selected && selected.length) ? selected.join(', ') : placeholder}>
-            {display}
-          </span>
-          <span className="msd-button-caret" aria-hidden>{open ? '▴' : '▾'}</span>
+        <button type="button" className="msd-button" onClick={() => setOpen(s => !s)} style={{ width: '100%', textAlign: 'left', padding: '8px 10px' }}>
+          {display}
+          <span style={{ float: 'right', opacity: 0.6 }}>{open ? '▴' : '▾'}</span>
         </button>
-
         {open && (
-          <div
-            className="msd-panel"
-            role="listbox"
-            aria-multiselectable="true"
-            style={{ position: 'absolute', zIndex: 80, top: 'calc(100% + 6px)', left: 0, right: 0, maxHeight: 220, overflow: 'auto', background: 'white', border: '1px solid #ddd', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', padding: 8 }}
-            onMouseDown={(e) => {
-              // stop propagation of pointer/mouse events so document listener won't close the dropdown
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              // also stop click propagation just in case
-              e.stopPropagation();
-            }}
-          >
-            {options && options.length ? options.map(opt => {
-              const checked = (selected || []).indexOf(opt.value) >= 0;
-              return (
-                <label
-                  key={opt.value}
-                  className="msd-option"
-                  style={{ display: 'flex', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
-                  onClick={(e) => e.stopPropagation()} /* extra safety */
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => {
-                      // stop event propagation to avoid closing dropdown
-                      e.stopPropagation();
-                      toggleVal(opt.value);
-                    }}
-                  />
-                  <span style={{ marginLeft: 8 }}>{opt.label}</span>
-                </label>
-              );
-            }) : (
+          <div className="msd-panel" style={{ position: 'absolute', zIndex: 80, top: 'calc(100% + 6px)', left: 0, right: 0, maxHeight: 220, overflow: 'auto', background: 'white', border: '1px solid #ddd', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', padding: 8 }}>
+            {options && options.length ? options.map(opt => (
+              <label
+                key={opt.value}
+                style={{ display: 'flex', alignItems: 'center', padding: '6px 8px', cursor: 'pointer' }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input type="checkbox" checked={(selected || []).indexOf(opt.value) >= 0} onChange={() => toggleVal(opt.value)} />
+                <span style={{ marginLeft: 8 }}>{opt.label}</span>
+              </label>
+            )) : (
               <div style={{ padding: 8, color: '#666' }}>No options</div>
             )}
           </div>
@@ -294,14 +252,11 @@ export default function AdminDashboard({ token, username, onLogout }) {
 
   // legacy permanent-purge handlers removed (use filter-based deletes)
 
-  // NOTE: previewRange removed from the delete flow. We keep preview helpers
-  // in case they are needed later, but the current flow opens a confirmation
-  // modal directly when the user clicks Delete.
   async function previewRange(e) {
     e?.preventDefault();
     setPreviewLoading(true); setPreviewRows([]); setPreviewCount(0);
     try {
-      const parts = [];
+  const parts = [];
       if (filterEvent && filterEvent.length) filterEvent.forEach(v => parts.push(`event=${encodeURIComponent(v)}`));
       if (filterLocation && filterLocation.length) filterLocation.forEach(v => parts.push(`location=${encodeURIComponent(v)}`));
       if (filterStatus && filterStatus.length) filterStatus.forEach(v => parts.push(`status=${encodeURIComponent(v)}`));
@@ -323,39 +278,22 @@ export default function AdminDashboard({ token, username, onLogout }) {
   async function confirmDeleteRange() {
     setDeletingRange(true);
     try {
-      const parts = [];
-      if (filterEvent && filterEvent.length) filterEvent.forEach(v => parts.push(`event=${encodeURIComponent(v)}`));
-      if (filterLocation && filterLocation.length) filterLocation.forEach(v => parts.push(`location=${encodeURIComponent(v)}`));
-      if (filterStatus && filterStatus.length) filterStatus.forEach(v => parts.push(`status=${encodeURIComponent(v)}`));
-      if (fromDate) parts.push(`from=${encodeURIComponent(fromDate)}`);
-      if (toDate) parts.push(`to=${encodeURIComponent(toDate)}`);
-      if (!parts.length) return showToast('error', 'Select at least one filter to delete (event, location, status, from, to)');
+  const parts = [];
+  if (filterEvent && filterEvent.length) filterEvent.forEach(v => parts.push(`event=${encodeURIComponent(v)}`));
+  if (filterLocation && filterLocation.length) filterLocation.forEach(v => parts.push(`location=${encodeURIComponent(v)}`));
+  if (filterStatus && filterStatus.length) filterStatus.forEach(v => parts.push(`status=${encodeURIComponent(v)}`));
+  if (fromDate) parts.push(`from=${encodeURIComponent(fromDate)}`);
+  if (toDate) parts.push(`to=${encodeURIComponent(toDate)}`);
+  if (!parts.length) return showToast('error', 'Select at least one filter to delete (event, location, status, from, to)');
       const q = `?${parts.join('&')}`;
       const res = await fetch(`/api/admin/records${q}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
       let data = {};
       try { data = await res.json(); } catch (err) { }
       if (!res.ok) throw new Error((data && data.message) || res.statusText || 'Delete failed');
-      showToast('success', `Deleted ${data.deletedRows || 0} record(s)`);
-      setFromDate(''); setToDate(''); setFilterEvent([]); setFilterStatus([]); setFilterLocation([]); setShowPreviewModal(false); setPreviewRows([]); setPreviewCount(0);
+  showToast('success', `Deleted ${data.deletedRows || 0} record(s)`);
+  setFromDate(''); setToDate(''); setFilterEvent([]); setFilterStatus([]); setFilterLocation([]); setShowPreviewModal(false); setPreviewRows([]); setPreviewCount(0);
     } catch (err) { showToast('error', err.message || 'Server error'); }
     finally { setDeletingRange(false); }
-  }
-
-  function handleDeleteClick(e) {
-    e?.preventDefault();
-    const parts = [];
-    if (filterEvent && filterEvent.length) filterEvent.forEach(v => parts.push(`event=${encodeURIComponent(v)}`));
-    if (filterLocation && filterLocation.length) filterLocation.forEach(v => parts.push(`location=${encodeURIComponent(v)}`));
-    if (filterStatus && filterStatus.length) filterStatus.forEach(v => parts.push(`status=${encodeURIComponent(v)}`));
-    if (fromDate) parts.push(`from=${encodeURIComponent(fromDate)}`);
-    if (toDate) parts.push(`to=${encodeURIComponent(toDate)}`);
-    if (!parts.length) return showToast('error', 'Select at least one filter to delete (event, location, status, from, to)');
-    setShowDeleteRangeConfirm(true);
-  }
-
-  function performDeleteRangeConfirmed() {
-    setShowDeleteRangeConfirm(false);
-    confirmDeleteRange();
   }
 
   // Confirmation modal state for event deletions
@@ -571,11 +509,11 @@ export default function AdminDashboard({ token, username, onLogout }) {
               <div className="db-range">
                 <h4>Delete records by filters</h4>
                 <p className="small">Choose any combination of Event, Status, From and To dates. At least one filter is required.</p>
-                <form className="range-form" onSubmit={handleDeleteClick}>
+                <form className="range-form" onSubmit={previewRange}>
                   <label className="range-field">
                     <MultiSelectDropdown
                       label="Event"
-                      options={events.map(ev => ({ value: ev.name, label: ev.name }))}
+                      options={events.map(ev => ({ value: ev.name, label: ev.name + (ev.event_date ? ` (${ev.event_date})` : '') }))}
                       selected={filterEvent}
                       onChange={setFilterEvent}
                       placeholder="-- Select Event --"
@@ -608,27 +546,46 @@ export default function AdminDashboard({ token, username, onLogout }) {
                     />
                   </label>
                   <div className="range-actions" style={{ marginTop: 10 }}>
-                    <button className="btn-danger-wide" type="submit" disabled={deletingRange}>{deletingRange ? 'Deleting...' : 'Delete'}</button>
+                    <button className="btn-danger-wide" type="submit" disabled={deletingRange || previewLoading}>{previewLoading ? 'Checking...' : (deletingRange ? 'Deleting...' : 'Preview & Delete')}</button>
                   </div>
                 </form>
               </div>
 
-              <div className="db-note">Click Delete to permanently remove records that match the selected filters (confirmation required).</div>
+              <div className="db-note">Matching records will be permanently deleted when you confirm in the preview.</div>
             </div>
           </aside>
         </div>
       </div>
 
-      {/* Confirmation modal for deleting records by filters (no preview) */}
-      {showDeleteRangeConfirm && (
+      {/* Preview modal */}
+      {showPreviewModal && (
         <div className="modal-backdrop">
           <div className="modal-card">
-            <h3>Confirm delete</h3>
-            <p className="small">This will permanently delete records that match the following filters:</p>
-            <p className="small">{(filterEvent && filterEvent.length) ? `Event: ${filterEvent.join(', ')}` : ''} {(filterLocation && filterLocation.length) ? ` Location: ${filterLocation.join(', ')}` : ''} {(filterStatus && filterStatus.length) ? ` Status: ${filterStatus.join(', ')}` : ''} {fromDate ? ` From: ${fromDate}` : ''} {toDate ? ` To: ${toDate}` : ''}.</p>
+            <h3>Preview: {previewCount} record(s) matched</h3>
+            <p className="small">The following records match your filters {(filterEvent && filterEvent.length) ? `event="${filterEvent.join(', ')}"` : ''} {(filterLocation && filterLocation.length) ? `location="${filterLocation.join(', ')}"` : ''} {(filterStatus && filterStatus.length) ? `status="${filterStatus.join(', ')}"` : ''} {fromDate ? `from=${fromDate}` : ''} {toDate ? `to=${toDate}` : ''}.</p>
+            <div className="preview-list">
+              {previewRows && previewRows.length ? (
+                <table className="preview-table">
+                  <thead>
+                    <tr><th>Token</th><th>Deposited At</th><th>Returned At</th></tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.slice(0, 50).map(r => (
+                      <tr key={r.id}>
+                        <td>{r.token_number}</td>
+                        <td>{r.deposited_at}</td>
+                        <td>{r.returned_at || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-note">No records matched.</div>
+              )}
+            </div>
             <div className="modal-actions">
-              <button className="btn-clear" onClick={() => setShowDeleteRangeConfirm(false)}>Cancel</button>
-              <button className="btn-danger" onClick={performDeleteRangeConfirmed} disabled={deletingRange}>{deletingRange ? 'Deleting...' : 'Confirm Delete'}</button>
+              <button className="btn-clear" onClick={() => setShowPreviewModal(false)}>Cancel</button>
+              <button className="btn-danger" onClick={confirmDeleteRange} disabled={deletingRange}>{deletingRange ? 'Deleting...' : `Delete ${previewCount} records`}</button>
             </div>
           </div>
         </div>

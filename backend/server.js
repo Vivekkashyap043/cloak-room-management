@@ -11,6 +11,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const recordsRoutes = require('./routes/records');
+const eventsRoutes = require('./routes/events');
 
 const app = express();
 app.use(cors());
@@ -29,6 +30,7 @@ app.use('/uploads', express.static(uploadsDir));
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/events', eventsRoutes); // public (authenticated) events list
 app.use('/api/records', recordsRoutes);
 
 // Serve frontend build (adjust path if needed)

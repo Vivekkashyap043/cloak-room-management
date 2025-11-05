@@ -253,31 +253,7 @@ input:focus {
 .btn-danger-wide { min-width: 180px; }
 
 /* MultiSelectDropdown styles to match date inputs */
-:root {
-  --bg: #f6f8fb;
-  --card: #ffffff;
-  --muted: #6b7280;
-  --danger: #a32208;
-  --danger-strong: #7f1804;
-  --accent: #2563eb;
-  --glass: rgba(255,255,255,0.7);
-  --shadow-xl: 0 28px 60px rgba(2,6,23,0.12);
-  --shadow-md: 0 12px 30px rgba(2,6,23,0.06);
-  --radius-lg: 16px;
-  --radius-md: 12px;
-  --input-radius: 12px;
-  --max-width: 1180px;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-}
-
-/* (All other original CSS from your file remains unchanged above this point.)
-   Below are the dropdown-specific rules / small tweaks. */
-
-/* MultiSelectDropdown styles to match date inputs */
-/* MultiSelectDropdown styles to match date inputs */
-.msd-root { width: 100%; position: relative; }
-
-/* Button that shows selected items (fixed size + ellipsis) */
+.msd-root { width: 100%; }
 .msd-button {
   width: 100%;
   padding: 12px 14px;
@@ -288,72 +264,52 @@ input:focus {
   font-size: 0.96rem;
   color: #0f1724;
   text-align: left;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-
-  /* keep fixed height and prevent wrapping/expansion */
+  /* Keep height fixed and truncate long selection labels */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   height: 46px;
-  box-sizing: border-box;
 }
+.msd-button:focus { outline: none; border-color: rgba(37,99,235,0.85); box-shadow: 0 10px 30px rgba(37,99,235,0.06); transform: translateY(-1px); }
+.msd-panel { border-radius: 10px; overflow: auto; }
 
-.msd-button:focus {
-  outline: none;
-  border-color: rgba(37,99,235,0.85);
-  box-shadow: 0 10px 30px rgba(37,99,235,0.06);
-  transform: translateY(-1px);
-}
-
-/* The text portion inside the button — will ellipsize when long */
-.msd-button-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  flex: 1 1 auto;
-  font-size: 0.96rem;
-}
-
-/* caret (▾ / ▴) */
-.msd-button-caret {
-  margin-left: 12px;
-  opacity: 0.65;
-  flex: 0 0 auto;
-}
-
-/* panel: dropdown list */
-.msd-panel {
-  border-radius: 10px;
-  overflow: auto;
-  padding: 8px;
-  background: #fff;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-  border: 1px solid #ddd;
-}
-
-/* each option row */
-.msd-option {
-  font-size: 0.96rem;
-  color: #0f1724;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-}
-
-/* make checkbox a bit larger, same look as earlier */
+/* Small checkbox styling inside dropdown to match project look */
 .msd-panel label input[type="checkbox"] { transform: scale(1.05); margin-right: 8px; }
 
-/* small responsiveness fix: ensure panel doesn't overflow viewport horizontally */
-@media (max-width: 520px) {
-  .msd-panel { max-height: 260px; }
+
+/* Make Preview button visually consistent and responsive */
+.range-actions .btn-danger-wide { width: 100%; max-width: 320px; }
+
+@media (max-width: 980px) {
+  .range-form { grid-template-columns: 1fr; }
+  .range-actions { grid-column: 1 / -1; justify-content: stretch; }
+  .range-actions .btn-danger-wide { max-width: 100%; }
 }
 
+/* Make the right panel look like an elevated card inside a dark surround */
+.right-card { position: relative; }
+.right-card .db-wrapper { position: sticky; top: 28px; }
+
+/* Responsive: stack on small screens */
+@media (max-width: 980px) {
+  .adm-grid { grid-template-columns: 1fr; gap:18px; }
+  .right-card-outer { order: 2; }
+  .adm-container { padding:0 12px; }
+  .found-header { flex-direction:column; align-items:flex-start; gap:10px; }
+  .found-actions { width:100%; justify-content:flex-end; }
+}
+
+@media (max-width: 520px) {
+  .adm-root { padding: 20px 12px 80px; }
+  .adm-header { padding: 12px 14px; }
+  .avatar { width:52px; height:52px; font-size:18px; }
+  .btn-primary, .btn-search { padding:10px 12px; }
+  .db-inner { padding:14px; }
+}
 
 /* Modal preview styles */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(3,7,18,0.6); display:flex; align-items:center; justify-content:center; z-index:140; padding:20px; }

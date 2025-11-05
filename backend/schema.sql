@@ -20,11 +20,10 @@ CREATE TABLE IF NOT EXISTS users (
 -- Create records table
 CREATE TABLE IF NOT EXISTS records (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  token_number VARCHAR(100) NOT NULL UNIQUE,
-  -- location of the record (auto-filled from the authenticated user's location)
+  token_number VARCHAR(100) NOT NULL,
   location VARCHAR(64) NOT NULL,
-  -- things_name removed: items are stored in separate `items` table
   person_photo_path VARCHAR(500) DEFAULT NULL,
+  event_name VARCHAR(255) DEFAULT NULL,
   status ENUM('deposited', 'returned') DEFAULT 'deposited',
   deposited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   returned_at DATETIME NULL
@@ -40,3 +39,15 @@ CREATE TABLE IF NOT EXISTS items (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (record_id) REFERENCES records(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE IF NOT EXISTS events (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  description TEXT DEFAULT NULL,
+  event_date DATE NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE UNIQUE INDEX idx_token_location_event_unique ON records (token_number, location, event_name);
